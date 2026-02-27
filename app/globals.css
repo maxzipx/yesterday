@@ -199,6 +199,62 @@ p {
   word-break: break-all;
 }
 
+.form-grid {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.8rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+}
+
+.input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+}
+
+.input:focus {
+  outline: 2px solid #d6e5fd;
+  border-color: var(--accent);
+}
+
+.button {
+  margin-top: 0.25rem;
+  width: fit-content;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.5rem 0.85rem;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.button-muted {
+  border-color: var(--border);
+  background: #fbfcfd;
+  color: var(--text);
+}
+
+.error-text {
+  margin-top: 0.8rem;
+  color: #b42318;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;

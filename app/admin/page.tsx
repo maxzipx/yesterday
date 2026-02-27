@@ -1,26 +1,7 @@
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import AdminGate from "@/app/admin/admin-gate";
+
+export const dynamic = "force-dynamic";
 
 export default function AdminPage() {
-  const configured = isSupabaseConfigured();
-
-  return (
-    <section className="page-stack">
-      <h1 className="page-heading">Admin</h1>
-      <article className="card">
-        <h2>Admin Panel Placeholder</h2>
-        <p>
-          This page is reserved for managing brief drafts, publication state,
-          and editorial settings.
-        </p>
-        <ul className="highlights">
-          <li>Draft management and preview tools will live here.</li>
-          <li>Publication workflow controls will be added here.</li>
-          <li>User permissions and role settings will be added here.</li>
-        </ul>
-        <p className="muted">
-          Supabase status: {configured ? "configured" : "not configured"}
-        </p>
-      </article>
-    </section>
-  );
+  return <AdminGate />;
 }

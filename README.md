@@ -18,9 +18,16 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 # Optional for server-only privileged access:
 # SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+ADMIN_EMAILS=admin1@example.com,admin2@example.com
 ```
 
 Public pages read directly from Supabase on the server. Configure the variables above before running the app.
+
+## Admin Access
+
+- `/admin` uses Supabase Auth email/password sign-in.
+- Authorization is checked server-side against `ADMIN_EMAILS`.
+- Logged-in users not in `ADMIN_EMAILS` see `Not authorized`.
 
 ## Supabase Setup
 
