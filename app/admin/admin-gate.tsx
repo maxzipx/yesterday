@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import BriefEditor from "@/app/admin/brief-editor";
 
 type AdminAuthState =
   | { kind: "checking" }
@@ -254,6 +255,10 @@ export default function AdminGate() {
     );
   }
 
+  if (!supabase) {
+    return null;
+  }
+
   return (
     <section className="page-stack">
       <h1 className="page-heading">Admin Dashboard</h1>
@@ -263,9 +268,7 @@ export default function AdminGate() {
           Sign out
         </button>
       </article>
-      <article className="card">
-        <h2>Brief editor coming next phase</h2>
-      </article>
+      <BriefEditor supabase={supabase} />
     </section>
   );
 }

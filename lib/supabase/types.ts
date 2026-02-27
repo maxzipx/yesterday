@@ -43,6 +43,15 @@ export type Database = {
           updated_at?: string;
           why_it_matters?: string | null;
         };
+        Relationships: [
+          {
+            foreignKeyName: "brief_stories_brief_id_fkey";
+            columns: ["brief_id"];
+            isOneToOne: false;
+            referencedRelation: "daily_briefs";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       daily_briefs: {
         Row: {
@@ -72,7 +81,20 @@ export type Database = {
           title?: string | null;
           updated_at?: string;
         };
+        Relationships: [];
       };
+    };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
+    Enums: {
+      [_ in never]: never;
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
 };

@@ -255,6 +255,91 @@ p {
   color: #b42318;
 }
 
+.textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  font: inherit;
+  background: #fff;
+  color: var(--text);
+  resize: vertical;
+}
+
+.textarea:focus {
+  outline: 2px solid #d6e5fd;
+  border-color: var(--accent);
+}
+
+.editor-toolbar {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.field-compact {
+  width: min(220px, 100%);
+}
+
+.editor-empty {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.editor-stack {
+  margin-top: 1rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.editor-story-grid {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.story-editor-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #fcfdff;
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.story-editor-card h3 {
+  font-size: 1.05rem;
+}
+
+.sources-block {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.sources-title {
+  font-weight: 600;
+}
+
+.source-row {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 1fr 1fr auto;
+  align-items: center;
+}
+
+.button-small {
+  margin-top: 0;
+  padding: 0.4rem 0.65rem;
+}
+
+.editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;
@@ -269,5 +354,9 @@ p {
 
   .card {
     border-radius: 10px;
+  }
+
+  .source-row {
+    grid-template-columns: 1fr;
   }
 }

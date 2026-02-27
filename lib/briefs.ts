@@ -42,9 +42,11 @@ function toSources(raw: Json): BriefSource[] {
       "label" in item &&
       "url" in item &&
       typeof item.label === "string" &&
-      typeof item.url === "string"
+      typeof item.url === "string" &&
+      item.label.trim().length > 0 &&
+      item.url.trim().length > 0
     ) {
-      return [{ label: item.label, url: item.url }];
+      return [{ label: item.label.trim(), url: item.url.trim() }];
     }
 
     return [];

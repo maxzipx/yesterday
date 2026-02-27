@@ -28,6 +28,7 @@ Public pages read directly from Supabase on the server. Configure the variables 
 - `/admin` uses Supabase Auth email/password sign-in.
 - Authorization is checked server-side against `ADMIN_EMAILS`.
 - Logged-in users not in `ADMIN_EMAILS` see `Not authorized`.
+- Admin editor supports loading a date, creating drafts, editing 5 stories, saving drafts, publishing, and unpublishing.
 
 ## Supabase Setup
 
