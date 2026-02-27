@@ -193,6 +193,12 @@ p {
   margin-top: 0.3rem;
 }
 
+.source-url {
+  color: var(--muted);
+  font-size: 0.9rem;
+  word-break: break-all;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;

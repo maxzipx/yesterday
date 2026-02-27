@@ -1,6 +1,5 @@
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import type { Database, Json } from "@/lib/supabase/types";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
-import type { Json, Database } from "@/lib/supabase/types";
 
 export type BriefSource = {
   label: string;
@@ -8,80 +7,28 @@ export type BriefSource = {
 };
 
 export type BriefStory = {
+  id: string;
+  position: number;
   headline: string;
   summary: string;
-  whyItMatters: string | null;
   sources: BriefSource[];
-  position: number;
 };
 
-export type Brief = {
+export type BriefRecord = {
+  id: string;
   date: string;
-  title: string;
-  summary: string;
-  highlights: string[];
+  title: string | null;
+};
+
+export type BriefWithStories = BriefRecord & {
   stories: BriefStory[];
 };
 
 type DailyBriefRow = Database["public"]["Tables"]["daily_briefs"]["Row"];
 type StoryRow = Database["public"]["Tables"]["brief_stories"]["Row"];
 
-const mockPublishedBriefs: Brief[] = [
-  {
-    date: "2026-02-26",
-    title: "State Policy Signals and Market Impact",
-    summary:
-      "A quick review of policy signals, business moves, and notable sentiment shifts from the last 24 hours.",
-    highlights: [
-      "Regulatory updates pointed to slower near-term approvals in two sectors.",
-      "Major retailers reported cautious but stable demand in weekly commentary.",
-      "Macro data release schedule suggests a quiet opening to next week.",
-    ],
-    stories: [],
-  },
-  {
-    date: "2026-02-25",
-    title: "Earnings Momentum Check",
-    summary:
-      "Published companies showed mixed guidance while operational cost control remained a common positive theme.",
-    highlights: [
-      "Guidance revisions were narrow, with fewer large downside surprises.",
-      "Operational margin stability improved in software and logistics.",
-      "Hiring commentary remained conservative across most management calls.",
-    ],
-    stories: [],
-  },
-  {
-    date: "2026-02-24",
-    title: "Infrastructure and Energy Roundup",
-    summary:
-      "Infrastructure projects continue progressing while energy pricing stayed within a tighter trading range.",
-    highlights: [
-      "Two large procurement announcements accelerated regional timelines.",
-      "Forward pricing indicated less volatility than earlier in the month.",
-      "Capital project financing conditions remained generally supportive.",
-    ],
-    stories: [],
-  },
-  {
-    date: "2026-02-23",
-    title: "Consumer Watch",
-    summary:
-      "A pulse check on consumer behavior, discretionary spend, and early spring inventory positioning.",
-    highlights: [
-      "Category-level demand was strongest in essentials and health products.",
-      "Promotional cadence remained elevated but less aggressive week over week.",
-      "Brands continued prioritizing inventory discipline over top-line growth.",
-    ],
-    stories: [],
-  },
-];
-
-const briefFields =
-  "id, brief_date, status, title, published_at, created_at, updated_at";
-
-const storyFields =
-  "id, brief_id, position, headline, summary, why_it_matters, sources, created_at, updated_at";
+const BRIEF_FIELDS = "id, brief_date, title, status";
+const STORY_FIELDS = "id, brief_id, position, headline, summary, sources";
 
 function toSources(raw: Json): BriefSource[] {
   if (!Array.isArray(raw)) {
@@ -104,152 +51,104 @@ function toSources(raw: Json): BriefSource[] {
   });
 }
 
-function mapBrief(brief: DailyBriefRow, stories: StoryRow[]): Brief {
-  const orderedStories = [...stories].sort((a, b) => a.position - b.position);
-  const mappedStories: BriefStory[] = orderedStories.map((story) => ({
-    headline: story.headline,
-    summary: story.summary,
-    whyItMatters: story.why_it_matters,
-    sources: toSources(story.sources),
-    position: story.position,
-  }));
-
+function mapBriefRow(row: DailyBriefRow): BriefRecord {
   return {
-    date: brief.brief_date,
-    title: brief.title ?? `Daily Brief ${brief.brief_date}`,
-    summary: mappedStories[0]?.summary ?? "No summary is available yet.",
-    highlights: mappedStories.slice(0, 3).map((story) => story.headline),
-    stories: mappedStories,
+    id: row.id,
+    date: row.brief_date,
+    title: row.title,
   };
 }
 
-function getMockPublishedBriefs(): Brief[] {
-  return mockPublishedBriefs;
+function mapStoryRow(row: StoryRow): BriefStory {
+  return {
+    id: row.id,
+    position: row.position,
+    headline: row.headline,
+    summary: row.summary,
+    sources: toSources(row.sources),
+  };
 }
 
-function getMockBriefByDate(date: string): Brief | undefined {
-  return mockPublishedBriefs.find((brief) => brief.date === date);
-}
-
-async function fetchStoriesByBriefIds(
-  briefIds: string[],
-): Promise<Map<string, StoryRow[]>> {
-  const storiesByBriefId = new Map<string, StoryRow[]>();
-
-  if (briefIds.length === 0) {
-    return storiesByBriefId;
-  }
-
+async function fetchStoriesForBrief(briefId: string): Promise<BriefStory[]> {
   const supabase = getSupabaseServerClient();
-  const { data: stories, error } = await supabase
+  const { data, error } = await supabase
     .from("brief_stories")
-    .select(storyFields)
-    .in("brief_id", briefIds)
-    .order("position", { ascending: true });
+    .select(STORY_FIELDS)
+    .eq("brief_id", briefId)
+    .order("position", { ascending: true })
+    .limit(5);
 
   if (error) {
-    throw new Error(error.message);
+    throw new Error(`Failed to fetch brief stories: ${error.message}`);
   }
 
-  const storyRows = (stories ?? []) as StoryRow[];
-
-  for (const story of storyRows) {
-    const current = storiesByBriefId.get(story.brief_id) ?? [];
-    current.push(story);
-    storiesByBriefId.set(story.brief_id, current);
-  }
-
-  return storiesByBriefId;
+  return ((data ?? []) as StoryRow[]).map(mapStoryRow);
 }
 
-export async function getPublishedBriefs(): Promise<Brief[]> {
-  if (!isSupabaseConfigured()) {
-    return getMockPublishedBriefs();
+export async function getPublishedBriefs(): Promise<BriefRecord[]> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("daily_briefs")
+    .select(BRIEF_FIELDS)
+    .eq("status", "published")
+    .order("brief_date", { ascending: false });
+
+  if (error) {
+    throw new Error(`Failed to fetch published briefs: ${error.message}`);
   }
 
-  try {
-    const supabase = getSupabaseServerClient();
-    const { data: briefs, error } = await supabase
-      .from("daily_briefs")
-      .select(briefFields)
-      .eq("status", "published")
-      .order("brief_date", { ascending: false });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const rows = (briefs ?? []) as DailyBriefRow[];
-    const storiesByBriefId = await fetchStoriesByBriefIds(rows.map((row) => row.id));
-
-    return rows.map((row) => mapBrief(row, storiesByBriefId.get(row.id) ?? []));
-  } catch (error) {
-    console.error("Falling back to mock published briefs.", error);
-    return getMockPublishedBriefs();
-  }
+  return ((data ?? []) as DailyBriefRow[]).map(mapBriefRow);
 }
 
-export async function getLatestPublishedBrief(): Promise<Brief | undefined> {
-  if (!isSupabaseConfigured()) {
-    return getMockPublishedBriefs()[0];
+export async function getLatestPublishedBrief(): Promise<BriefWithStories | null> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("daily_briefs")
+    .select(BRIEF_FIELDS)
+    .eq("status", "published")
+    .order("brief_date", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch latest published brief: ${error.message}`);
   }
 
-  try {
-    const supabase = getSupabaseServerClient();
-    const { data: brief, error } = await supabase
-      .from("daily_briefs")
-      .select(briefFields)
-      .eq("status", "published")
-      .order("brief_date", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const briefRow = (brief as DailyBriefRow | null) ?? null;
-
-    if (!briefRow) {
-      return undefined;
-    }
-
-    const storiesByBriefId = await fetchStoriesByBriefIds([briefRow.id]);
-    return mapBrief(briefRow, storiesByBriefId.get(briefRow.id) ?? []);
-  } catch (error) {
-    console.error("Falling back to mock latest brief.", error);
-    return getMockPublishedBriefs()[0];
+  const row = (data as DailyBriefRow | null) ?? null;
+  if (!row) {
+    return null;
   }
+
+  const stories = await fetchStoriesForBrief(row.id);
+  return {
+    ...mapBriefRow(row),
+    stories,
+  };
 }
 
-export async function getBriefByDate(date: string): Promise<Brief | undefined> {
-  if (!isSupabaseConfigured()) {
-    return getMockBriefByDate(date);
+export async function getPublishedBriefByDate(
+  date: string,
+): Promise<BriefWithStories | null> {
+  const supabase = getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("daily_briefs")
+    .select(BRIEF_FIELDS)
+    .eq("status", "published")
+    .eq("brief_date", date)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to fetch published brief by date: ${error.message}`);
   }
 
-  try {
-    const supabase = getSupabaseServerClient();
-    const { data: brief, error } = await supabase
-      .from("daily_briefs")
-      .select(briefFields)
-      .eq("status", "published")
-      .eq("brief_date", date)
-      .maybeSingle();
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    const briefRow = (brief as DailyBriefRow | null) ?? null;
-
-    if (!briefRow) {
-      return undefined;
-    }
-
-    const storiesByBriefId = await fetchStoriesByBriefIds([briefRow.id]);
-    return mapBrief(briefRow, storiesByBriefId.get(briefRow.id) ?? []);
-  } catch (error) {
-    console.error(`Falling back to mock brief for ${date}.`, error);
-    return getMockBriefByDate(date);
+  const row = (data as DailyBriefRow | null) ?? null;
+  if (!row) {
+    return null;
   }
+
+  const stories = await fetchStoriesForBrief(row.id);
+  return {
+    ...mapBriefRow(row),
+    stories,
+  };
 }

@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import Link from "next/link";
 import { getLatestPublishedBrief } from "@/lib/briefs";
 import { formatBriefDate } from "@/lib/format";
@@ -20,18 +22,34 @@ export default async function BriefPage() {
     <section className="page-stack">
       <h1 className="page-heading">Latest Brief</h1>
       <article className="card">
-        <h2>{brief.title}</h2>
         <p className="muted">Published {formatBriefDate(brief.date)}</p>
-        <p>{brief.summary}</p>
-        <ul className="highlights">
-          {brief.highlights.map((item) => (
-            <li key={item}>{item}</li>
+        {brief.title ? <h2>{brief.title}</h2> : null}
+        <div className="story-list">
+          {brief.stories.map((story) => (
+            <article className="story-card" key={story.id}>
+              <p className="muted">Story {story.position}</p>
+              <h3>{story.headline}</h3>
+              <p>{story.summary}</p>
+              {story.sources.length > 0 ? (
+                <ul className="inline-list">
+                  {story.sources.map((source) => (
+                    <li key={`${story.id}-${source.url}`}>
+                      <a href={source.url} target="_blank" rel="noopener noreferrer">
+                        {source.label}
+                      </a>
+                      <span className="source-url"> ({source.url})</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </article>
           ))}
-        </ul>
+        </div>
         <Link href={`/brief/${brief.date}`} className="button-link">
-          Open full brief
+          Open date permalink
         </Link>
       </article>
     </section>
   );
 }
+

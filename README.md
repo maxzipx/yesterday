@@ -16,9 +16,11 @@ Copy `.env.example` to `.env.local` and set:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+# Optional for server-only privileged access:
+# SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-If env vars are not set (or Supabase tables are not ready), the app falls back to mock brief data so routes still render.
+Public pages read directly from Supabase on the server. Configure the variables above before running the app.
 
 ## Supabase Setup
 
