@@ -160,6 +160,39 @@ p {
   background: #f0f4fa;
 }
 
+.story-list {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.story-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.8rem;
+  background: #fcfdff;
+}
+
+.story-card h3 {
+  margin: 0.3rem 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.story-meta {
+  margin-top: 0.45rem;
+  color: var(--muted);
+}
+
+.inline-list {
+  margin-top: 0.45rem;
+  padding-left: 1.15rem;
+}
+
+.inline-list li + li {
+  margin-top: 0.3rem;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;

@@ -16,7 +16,7 @@ export default async function BriefDetailPage({ params }: BriefDetailPageProps) 
     notFound();
   }
 
-  const brief = getBriefByDate(date);
+  const brief = await getBriefByDate(date);
 
   if (!brief) {
     notFound();
@@ -29,11 +29,39 @@ export default async function BriefDetailPage({ params }: BriefDetailPageProps) 
         <h2>{brief.title}</h2>
         <p className="muted">Published {brief.date}</p>
         <p>{brief.summary}</p>
-        <ul className="highlights">
-          {brief.highlights.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
+        {brief.stories.length > 0 ? (
+          <div className="story-list">
+            {brief.stories.map((story) => (
+              <article className="story-card" key={`${story.position}-${story.headline}`}>
+                <p className="muted">Story {story.position}</p>
+                <h3>{story.headline}</h3>
+                <p>{story.summary}</p>
+                {story.whyItMatters ? (
+                  <p className="story-meta">
+                    <strong>Why it matters:</strong> {story.whyItMatters}
+                  </p>
+                ) : null}
+                {story.sources.length > 0 ? (
+                  <ul className="inline-list">
+                    {story.sources.map((source) => (
+                      <li key={`${story.position}-${source.url}`}>
+                        <a href={source.url} target="_blank" rel="noopener noreferrer">
+                          {source.label}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <ul className="highlights">
+            {brief.highlights.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        )}
         <Link href="/archive" className="button-link">
           Back to archive
         </Link>

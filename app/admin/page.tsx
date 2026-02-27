@@ -1,4 +1,8 @@
+import { isSupabaseConfigured } from "@/lib/supabase/env";
+
 export default function AdminPage() {
+  const configured = isSupabaseConfigured();
+
   return (
     <section className="page-stack">
       <h1 className="page-heading">Admin</h1>
@@ -13,6 +17,9 @@ export default function AdminPage() {
           <li>Publication workflow controls will be added here.</li>
           <li>User permissions and role settings will be added here.</li>
         </ul>
+        <p className="muted">
+          Supabase status: {configured ? "configured" : "not configured"}
+        </p>
       </article>
     </section>
   );

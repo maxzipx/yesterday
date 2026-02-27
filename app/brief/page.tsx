@@ -2,8 +2,8 @@ import Link from "next/link";
 import { getLatestPublishedBrief } from "@/lib/briefs";
 import { formatBriefDate } from "@/lib/format";
 
-export default function BriefPage() {
-  const brief = getLatestPublishedBrief();
+export default async function BriefPage() {
+  const brief = await getLatestPublishedBrief();
 
   if (!brief) {
     return (

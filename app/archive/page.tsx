@@ -2,8 +2,8 @@ import Link from "next/link";
 import { getPublishedBriefs } from "@/lib/briefs";
 import { formatBriefDate } from "@/lib/format";
 
-export default function ArchivePage() {
-  const briefs = getPublishedBriefs();
+export default async function ArchivePage() {
+  const briefs = await getPublishedBriefs();
 
   return (
     <section className="page-stack">
