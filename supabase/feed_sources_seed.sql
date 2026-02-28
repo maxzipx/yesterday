@@ -1,7 +1,5 @@
 insert into public.feed_sources (name, url, is_enabled)
 values
-  ('Reuters - Top News', 'https://feeds.reuters.com/reuters/topNews', true),
-  ('Associated Press - Top News', 'https://apnews.com/rss/apf-topnews', true),
   ('The Guardian - World', 'https://www.theguardian.com/world/rss', true),
   ('Bloomberg - Markets News', 'https://feeds.bloomberg.com/markets/news.rss', true),
   ('Wall Street Journal - World News', 'https://feeds.a.dj.com/rss/RSSWorldNews.xml', true),
