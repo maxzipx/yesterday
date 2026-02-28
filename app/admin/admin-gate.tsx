@@ -5,6 +5,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import BriefEditor from "@/app/admin/brief-editor";
 import RssIngestPanel from "@/app/admin/rss-ingest-panel";
 import ClusterPanel from "@/app/admin/cluster-panel";
+import RankPanel from "@/app/admin/rank-panel";
 
 type AdminAuthState =
   | { kind: "checking" }
@@ -272,6 +273,7 @@ export default function AdminGate() {
       </article>
       <RssIngestPanel supabase={supabase} />
       <ClusterPanel supabase={supabase} />
+      <RankPanel supabase={supabase} />
       <BriefEditor supabase={supabase} />
     </section>
   );

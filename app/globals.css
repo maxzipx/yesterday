@@ -368,6 +368,25 @@ p {
   margin-top: 0.35rem;
 }
 
+.rank-summary {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.rank-list {
+  margin-top: 0.35rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.rank-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+  background: #fcfdff;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;
