@@ -25,6 +25,33 @@ OLLAMA_MODEL=qwen2.5:7b
 Public pages and admin APIs use Supabase with RLS. Configure the variables above before running the app.
 Do not expose service-role keys in browser code or Vercel public env vars.
 
+## Ollama (Week 3 AI Drafting)
+
+AI drafting uses **Ollama only** (no OpenAI API) and runs server-side in admin routes.
+
+Local setup:
+
+```bash
+ollama serve
+ollama pull qwen2.5:7b
+```
+
+Then set:
+
+```bash
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+In `/admin`, use **Ping Ollama** before AI generation to verify connectivity.
+If Ollama is down or unreachable, the app returns:
+`Ollama not reachable at <OLLAMA_BASE_URL>. Start Ollama and ensure model <OLLAMA_MODEL> is installed.`
+
+Important deployment note:
+- Vercel cannot reach `127.0.0.1` on your laptop.
+- For deployed AI drafting, run Ollama on a reachable host (LAN/server/VPS) and set `OLLAMA_BASE_URL` to that reachable URL.
+- Do not expose Ollama publicly without network protection (VPN, firewall allowlist, reverse proxy auth).
+
 ## Admin Access
 
 - `/admin` uses Supabase Auth email/password sign-in.
@@ -36,6 +63,11 @@ Do not expose service-role keys in browser code or Vercel public env vars.
 - Admin ranking supports `Rank Clusters`, updates `story_clusters.score`, and snapshots top 30 in `cluster_candidates`.
 - Admin candidates pool supports browsing top candidates, viewing cluster members, and assigning a cluster to Story #1..#5 in the brief editor.
 - Admin draft generation supports one-click `Generate Draft From Top 5` using ranked candidates.
+- Admin AI drafting supports:
+  - `Generate AI Drafts` for the loaded brief
+  - per-story `Regenerate`
+  - confidence + flags display and publish warnings
+  - one-click `Generate Full Draft` (ingest -> cluster -> rank -> draft -> AI)
 
 ## Supabase Setup
 
@@ -123,6 +155,8 @@ Vercel cron schedule is configured in [vercel.json](./vercel.json) to call `/api
 9. Open `/brief/YYYY-MM-DD` and confirm the published story content is displayed.
 10. Sign in with a non-admin account and confirm `/admin` shows `Not authorized` and cannot edit.
 11. Open `/health` and ensure status is `OK`.
+12. In `/admin`, click `Ping Ollama` and verify a successful response.
+13. Click `Generate Full Draft` and confirm all 5 stories are AI-filled (headline, summary, why-it-matters, confidence, flags).
 
 ## Local Development
 

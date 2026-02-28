@@ -5,6 +5,7 @@ import { ingestRssForWindowDate } from "@/app/api/admin/ingest-rss/route";
 import { rankClustersForWindowDate } from "@/app/api/admin/rank/route";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { AdminAiDraftError, draftBriefWithAi } from "@/lib/admin-ai-draft";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -38,6 +39,19 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdminFromRequest(request);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const rate = checkRateLimit(`pipeline:full-draft:${auth.userId}`, 6, 10 * 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many full draft runs. Try again in ${rate.retryAfterSeconds}s.`,
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      },
+    );
   }
 
   const body = (await request.json().catch(() => ({}))) as GenerateFullDraftRequestBody;
@@ -113,6 +127,13 @@ export async function POST(request: NextRequest) {
       message: `${aiDraft.stories.length} stories drafted with AI.`,
     });
 
+    console.info("[admin] generate-full-draft completed", {
+      userId: auth.userId,
+      briefId: draft.briefId,
+      briefDate: windowDate,
+      statuses,
+    });
+
     return NextResponse.json({
       briefId: draft.briefId,
       briefDate: windowDate,
@@ -141,6 +162,13 @@ export async function POST(request: NextRequest) {
         : message.toLowerCase().includes("not authorized")
           ? 403
           : 500;
+
+    console.error("[admin] generate-full-draft failed", {
+      userId: auth.userId,
+      briefDate: windowDate,
+      message,
+      statuses,
+    });
 
     return NextResponse.json({ error: message, statuses, briefDate: windowDate }, { status: statusCode });
   }

@@ -155,6 +155,7 @@ function buildFactPack(
 }
 
 async function generateAttempt(
+  clusterId: string,
   factPack: string,
   strictJsonOnly: boolean,
 ): Promise<GeneratedStoryDraft> {
@@ -186,6 +187,12 @@ async function generateAttempt(
     timeoutMs: 90_000,
   });
 
+  console.info("[story-draft] ollama response", {
+    clusterId,
+    strictJsonOnly,
+    metrics: response.metrics,
+  });
+
   const parsed = parseJsonObject(response.content) as DraftPayload;
   return validateDraftPayload(parsed);
 }
@@ -204,10 +211,10 @@ export async function generateStoryDraftFromCluster(
   const factPack = buildFactPack(representatives);
 
   try {
-    return await generateAttempt(factPack, false);
+    return await generateAttempt(clusterId, factPack, false);
   } catch (firstError) {
     try {
-      return await generateAttempt(factPack, true);
+      return await generateAttempt(clusterId, factPack, true);
     } catch (secondError) {
       const firstMessage =
         firstError instanceof Error ? firstError.message : String(firstError);

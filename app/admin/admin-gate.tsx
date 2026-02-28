@@ -8,6 +8,7 @@ import ClusterPanel from "@/app/admin/cluster-panel";
 import RankPanel from "@/app/admin/rank-panel";
 import CandidatesPanel from "@/app/admin/candidates-panel";
 import GenerateDraftPanel from "@/app/admin/generate-draft-panel";
+import AiToolsPanel from "@/app/admin/ai-tools-panel";
 import type {
   BriefLoadDateEvent,
   CandidateStoryAssignment,
@@ -344,6 +345,7 @@ export default function AdminGate() {
       <RssIngestPanel supabase={supabase} />
       <ClusterPanel supabase={supabase} />
       <RankPanel supabase={supabase} />
+      <AiToolsPanel supabase={supabase} />
       <GenerateDraftPanel supabase={supabase} onGenerated={onDraftGenerated} />
       <CandidatesPanel supabase={supabase} onAssignStory={onAssignStory} />
       <BriefEditor

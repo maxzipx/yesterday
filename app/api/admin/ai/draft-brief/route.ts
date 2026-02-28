@@ -4,6 +4,7 @@ import {
   AdminAiDraftError,
   draftBriefWithAi,
 } from "@/lib/admin-ai-draft";
+import { checkRateLimit } from "@/lib/rate-limit";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -17,6 +18,19 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdminFromRequest(request);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const rate = checkRateLimit(`ai:draft-brief:${auth.userId}`, 8, 10 * 60_000);
+  if (!rate.allowed) {
+    return NextResponse.json(
+      {
+        error: `Too many AI brief draft requests. Try again in ${rate.retryAfterSeconds}s.`,
+      },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      },
+    );
   }
 
   const body = (await request.json().catch(() => ({}))) as DraftBriefRequestBody;
