@@ -89,7 +89,7 @@ export default function CandidatesPanel({
   supabase,
   onAssignStory,
 }: CandidatesPanelProps) {
-  const [windowDate, setWindowDate] = useState(getYesterdayDateInput);
+  const [windowDate, setWindowDate] = useState("");
   const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
@@ -100,13 +100,10 @@ export default function CandidatesPanel({
   const [detail, setDetail] = useState<ClusterDetailResponse["cluster"] | null>(null);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
 
-  const title = useMemo(() => {
-    if (windowDate === getYesterdayDateInput()) {
-      return "Candidates (Yesterday)";
-    }
-
-    return `Candidates (${windowDate})`;
-  }, [windowDate]);
+  const title = useMemo(
+    () => (windowDate ? `Candidates (${windowDate})` : "Candidates"),
+    [windowDate],
+  );
 
   async function getAccessToken(): Promise<string | null> {
     const { data, error: sessionError } = await supabase.auth.getSession();
@@ -117,9 +114,15 @@ export default function CandidatesPanel({
     return data.session.access_token;
   }
 
-  async function loadCandidates() {
+  async function loadCandidates(dateOverride?: string) {
     setIsLoading(true);
     setError(null);
+
+    const dateToLoad = dateOverride ?? windowDate;
+    if (!dateToLoad) {
+      setIsLoading(false);
+      return;
+    }
 
     const token = await getAccessToken();
     if (!token) {
@@ -128,7 +131,7 @@ export default function CandidatesPanel({
       return;
     }
 
-    const response = await fetch(`/api/admin/candidates?windowDate=${windowDate}`, {
+    const response = await fetch(`/api/admin/candidates?windowDate=${dateToLoad}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -155,6 +158,12 @@ export default function CandidatesPanel({
       return;
     }
 
+    if (!windowDate) {
+      setError("Window date is required.");
+      return;
+    }
+    const dateToLoad = windowDate;
+
     const token = await getAccessToken();
     if (!token) {
       setError("Session expired. Please sign in again.");
@@ -171,7 +180,7 @@ export default function CandidatesPanel({
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        windowDate,
+        windowDate: dateToLoad,
         orderedClusterIds: candidates.map((candidate) => candidate.clusterId),
       }),
     });
@@ -251,7 +260,9 @@ export default function CandidatesPanel({
   }
 
   useEffect(() => {
-    void loadCandidates();
+    const initialDate = getYesterdayDateInput();
+    setWindowDate(initialDate);
+    void loadCandidates(initialDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -269,7 +280,12 @@ export default function CandidatesPanel({
             onChange={(event) => setWindowDate(event.target.value)}
           />
         </label>
-        <button className="button button-muted" type="button" onClick={loadCandidates} disabled={isLoading || isSavingOrder}>
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={() => void loadCandidates()}
+          disabled={isLoading || isSavingOrder}
+        >
           {isLoading ? "Loading..." : "Load"}
         </button>
         <button
@@ -397,4 +413,3 @@ export default function CandidatesPanel({
     </article>
   );
 }
-

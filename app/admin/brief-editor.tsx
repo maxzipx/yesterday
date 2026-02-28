@@ -224,7 +224,7 @@ export default function BriefEditor({
   assignmentEvent,
   loadDateEvent,
 }: BriefEditorProps) {
-  const [selectedDate, setSelectedDate] = useState(getYesterdayLocalDateInput);
+  const [selectedDate, setSelectedDate] = useState("");
   const [loadedDate, setLoadedDate] = useState<string | null>(null);
   const [brief, setBrief] = useState<BriefForm | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -281,6 +281,12 @@ export default function BriefEditor({
         .sort((a, b) => a.position - b.position),
     [aiRunStatuses],
   );
+
+  useEffect(() => {
+    if (!selectedDate) {
+      setSelectedDate(getYesterdayLocalDateInput());
+    }
+  }, [selectedDate]);
 
   useEffect(() => {
     if (!assignmentEvent) {
@@ -406,6 +412,9 @@ export default function BriefEditor({
   }
 
   async function loadBrief() {
+    if (!selectedDate) {
+      return;
+    }
     await loadBriefForDate(selectedDate);
   }
 
@@ -429,6 +438,12 @@ export default function BriefEditor({
       date: brief?.date ?? selectedDate,
       publishAnyway: options?.publishAnyway ?? false,
     };
+
+    if (!body.date) {
+      setIsSaving(false);
+      setErrorMessage("Select a date first.");
+      return;
+    }
 
     if (action !== "create_draft" && brief) {
       body.title = brief.title;
@@ -786,7 +801,12 @@ export default function BriefEditor({
             onChange={(event) => setSelectedDate(event.target.value)}
           />
         </label>
-        <button className="button button-muted" type="button" onClick={loadBrief} disabled={isLoading}>
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={loadBrief}
+          disabled={isLoading || !selectedDate}
+        >
           {isLoading ? "Loading..." : "Load"}
         </button>
       </div>
@@ -798,7 +818,7 @@ export default function BriefEditor({
             className="button"
             type="button"
             onClick={() => void runAction("create_draft")}
-            disabled={isSaving || isGeneratingAi}
+            disabled={isSaving || isGeneratingAi || !selectedDate}
           >
             Create draft for this date
           </button>
