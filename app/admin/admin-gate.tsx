@@ -14,6 +14,8 @@ import type {
   CandidateStoryAssignmentEvent,
 } from "@/app/admin/types";
 
+const AUTH_TIMEOUT_MS = 10000;
+
 type AdminAuthState =
   | { kind: "checking" }
   | { kind: "logged_out"; error?: string }
@@ -27,19 +29,68 @@ type AuthorizationResponse = {
   error?: string;
 };
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  timeoutMessage: string,
+): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
 async function checkAdminAuthorization(
   accessToken: string,
 ): Promise<AuthorizationResponse> {
-  const response = await fetch("/api/admin/authorize", {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), AUTH_TIMEOUT_MS);
 
-  const payload = (await response.json()) as AuthorizationResponse;
-  return payload;
+  try {
+    const response = await fetch("/api/admin/authorize", {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      cache: "no-store",
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return {
+        authenticated: false,
+        authorized: false,
+        email: null,
+        error: `Authorization check failed (${response.status}).`,
+      };
+    }
+
+    const payload = (await response.json()) as AuthorizationResponse;
+    return payload;
+  } catch (error) {
+    if (isAbortError(error)) {
+      throw new Error("Authorization check timed out.");
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }
 
 export default function AdminGate() {
@@ -70,20 +121,24 @@ export default function AdminGate() {
     let active = true;
 
     const syncState = async () => {
-      const { data, error } = await supabase.auth.getSession();
-      if (!active) {
-        return;
-      }
-
-      if (error || !data.session?.access_token) {
-        setAuthState({
-          kind: "logged_out",
-          error: error?.message,
-        });
-        return;
-      }
-
       try {
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          AUTH_TIMEOUT_MS,
+          "Session check timed out.",
+        );
+        if (!active) {
+          return;
+        }
+
+        if (error || !data.session?.access_token) {
+          setAuthState({
+            kind: "logged_out",
+            error: error?.message,
+          });
+          return;
+        }
+
         const authorization = await checkAdminAuthorization(data.session.access_token);
         if (!active) {
           return;
@@ -100,14 +155,17 @@ export default function AdminGate() {
         }
 
         setAuthState({ kind: "authorized", email: authorization.email });
-      } catch {
+      } catch (error) {
         if (!active) {
           return;
         }
 
         setAuthState({
           kind: "logged_out",
-          error: "Could not verify admin authorization.",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Could not verify admin authorization. Please try again.",
         });
       }
     };
