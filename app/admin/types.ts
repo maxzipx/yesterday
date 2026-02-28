@@ -14,3 +14,8 @@ export type CandidateStoryAssignmentEvent = {
   id: number;
   payload: CandidateStoryAssignment;
 };
+
+export type BriefLoadDateEvent = {
+  id: number;
+  date: string;
+};

@@ -31,6 +31,7 @@ Do not expose service-role keys in browser code or Vercel public env vars.
 - Admin clustering supports `Cluster Yesterday's Articles` with safe replace mode for that date.
 - Admin ranking supports `Rank Clusters`, updates `story_clusters.score`, and snapshots top 30 in `cluster_candidates`.
 - Admin candidates pool supports browsing top candidates, viewing cluster members, and assigning a cluster to Story #1..#5 in the brief editor.
+- Admin draft generation supports one-click `Generate Draft From Top 5` using ranked candidates.
 
 ## Supabase Setup
 

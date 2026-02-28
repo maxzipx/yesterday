@@ -7,7 +7,12 @@ import RssIngestPanel from "@/app/admin/rss-ingest-panel";
 import ClusterPanel from "@/app/admin/cluster-panel";
 import RankPanel from "@/app/admin/rank-panel";
 import CandidatesPanel from "@/app/admin/candidates-panel";
-import type { CandidateStoryAssignment, CandidateStoryAssignmentEvent } from "@/app/admin/types";
+import GenerateDraftPanel from "@/app/admin/generate-draft-panel";
+import type {
+  BriefLoadDateEvent,
+  CandidateStoryAssignment,
+  CandidateStoryAssignmentEvent,
+} from "@/app/admin/types";
 
 type AdminAuthState =
   | { kind: "checking" }
@@ -52,6 +57,7 @@ export default function AdminGate() {
   const [authState, setAuthState] = useState<AdminAuthState>({ kind: "checking" });
   const [assignmentEvent, setAssignmentEvent] =
     useState<CandidateStoryAssignmentEvent | null>(null);
+  const [loadDateEvent, setLoadDateEvent] = useState<BriefLoadDateEvent | null>(null);
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -192,6 +198,13 @@ export default function AdminGate() {
     });
   };
 
+  const onDraftGenerated = (date: string) => {
+    setLoadDateEvent({
+      id: Date.now(),
+      date,
+    });
+  };
+
   if (clientError) {
     return (
       <section className="page-stack">
@@ -285,8 +298,13 @@ export default function AdminGate() {
       <RssIngestPanel supabase={supabase} />
       <ClusterPanel supabase={supabase} />
       <RankPanel supabase={supabase} />
+      <GenerateDraftPanel supabase={supabase} onGenerated={onDraftGenerated} />
       <CandidatesPanel supabase={supabase} onAssignStory={onAssignStory} />
-      <BriefEditor supabase={supabase} assignmentEvent={assignmentEvent} />
+      <BriefEditor
+        supabase={supabase}
+        assignmentEvent={assignmentEvent}
+        loadDateEvent={loadDateEvent}
+      />
     </section>
   );
 }

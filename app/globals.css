@@ -466,6 +466,12 @@ p {
   background: #fcfdff;
 }
 
+.generate-summary {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;

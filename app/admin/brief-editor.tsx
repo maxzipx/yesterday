@@ -4,7 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { formatBriefDate } from "@/lib/format";
-import type { CandidateStoryAssignmentEvent } from "@/app/admin/types";
+import type {
+  BriefLoadDateEvent,
+  CandidateStoryAssignmentEvent,
+} from "@/app/admin/types";
 
 type SourceRow = {
   id: string;
@@ -35,6 +38,7 @@ type StoryErrors = Record<number, { headline?: string; summary?: string }>;
 type BriefEditorProps = {
   supabase: SupabaseClient<Database>;
   assignmentEvent?: CandidateStoryAssignmentEvent | null;
+  loadDateEvent?: BriefLoadDateEvent | null;
 };
 
 type EditorBriefResponse = {
@@ -153,7 +157,11 @@ function toRequestStories(stories: StoryForm[]) {
   }));
 }
 
-export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorProps) {
+export default function BriefEditor({
+  supabase,
+  assignmentEvent,
+  loadDateEvent,
+}: BriefEditorProps) {
   const [selectedDate, setSelectedDate] = useState(getYesterdayLocalDateInput);
   const [loadedDate, setLoadedDate] = useState<string | null>(null);
   const [brief, setBrief] = useState<BriefForm | null>(null);
@@ -226,6 +234,22 @@ export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorPr
     };
   }, [assignmentEvent, brief]);
 
+  useEffect(() => {
+    if (!loadDateEvent) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setSelectedDate(loadDateEvent.date);
+      void loadBriefForDate(loadDateEvent.date);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadDateEvent?.id]);
+
   async function getAccessToken(): Promise<string | null> {
     const { data, error } = await supabase.auth.getSession();
     if (error || !data.session?.access_token) {
@@ -235,7 +259,7 @@ export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorPr
     return data.session.access_token;
   }
 
-  async function loadBrief() {
+  async function loadBriefForDate(date: string) {
     setIsLoading(true);
     setErrorMessage(null);
     setStoryErrors({});
@@ -247,7 +271,7 @@ export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorPr
       return;
     }
 
-    const response = await fetch(`/api/admin/brief?date=${selectedDate}`, {
+    const response = await fetch(`/api/admin/brief?date=${date}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -257,7 +281,7 @@ export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorPr
 
     const payload = (await response.json()) as EditorBriefResponse;
     setIsLoading(false);
-    setLoadedDate(selectedDate);
+    setLoadedDate(date);
 
     if (!response.ok) {
       setErrorMessage(payload.error ?? "Failed to load brief.");
@@ -270,6 +294,10 @@ export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorPr
     }
 
     setBrief(mapBriefPayload(payload.brief));
+  }
+
+  async function loadBrief() {
+    await loadBriefForDate(selectedDate);
   }
 
   async function runAction(action: "create_draft" | "save_draft" | "publish" | "unpublish") {
@@ -423,7 +451,7 @@ export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorPr
   }
 
   return (
-    <article className="card">
+    <article className="card" id="brief-editor">
       <h2>Brief Editor</h2>
       <div className="editor-toolbar">
         <label className="field field-compact">
