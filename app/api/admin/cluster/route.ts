@@ -9,6 +9,33 @@ export const dynamic = "force-dynamic";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const CLUSTER_SIMILARITY_THRESHOLD = 0.32;
+const STOP_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "has",
+  "he",
+  "in",
+  "is",
+  "it",
+  "its",
+  "of",
+  "on",
+  "that",
+  "the",
+  "to",
+  "was",
+  "were",
+  "will",
+  "with",
+]);
 
 type ArticleRow = Pick<
   Database["public"]["Tables"]["articles"]["Row"],
@@ -70,13 +97,37 @@ function normalizeText(title: string, snippet: string | null): string {
     .trim();
 }
 
+function stemToken(token: string): string {
+  if (token.endsWith("'s")) {
+    return token.slice(0, -2);
+  }
+
+  if (token.length > 6 && token.endsWith("ing")) {
+    return token.slice(0, -3);
+  }
+
+  if (token.length > 5 && token.endsWith("ed")) {
+    return token.slice(0, -2);
+  }
+
+  if (token.length > 5 && token.endsWith("es")) {
+    return token.slice(0, -2);
+  }
+
+  if (token.length > 4 && token.endsWith("s")) {
+    return token.slice(0, -1);
+  }
+
+  return token;
+}
+
 function toVector(text: string): TokenVector {
   const vector: TokenVector = new Map();
 
   const tokens = text
     .split(" ")
-    .map((token) => token.trim())
-    .filter((token) => token.length >= 2);
+    .map((token) => stemToken(token.trim()))
+    .filter((token) => token.length >= 2 && !STOP_WORDS.has(token));
 
   for (const token of tokens) {
     vector.set(token, (vector.get(token) ?? 0) + 1);
