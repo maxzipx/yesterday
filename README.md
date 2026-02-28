@@ -30,6 +30,7 @@ Do not expose service-role keys in browser code or Vercel public env vars.
 - Admin RSS ingestion supports `Ingest RSS for Yesterday` from enabled `feed_sources`.
 - Admin clustering supports `Cluster Yesterday's Articles` with safe replace mode for that date.
 - Admin ranking supports `Rank Clusters`, updates `story_clusters.score`, and snapshots top 30 in `cluster_candidates`.
+- Admin candidates pool supports browsing top candidates, viewing cluster members, and assigning a cluster to Story #1..#5 in the brief editor.
 
 ## Supabase Setup
 

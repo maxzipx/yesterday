@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/types";
 import { formatBriefDate } from "@/lib/format";
+import type { CandidateStoryAssignmentEvent } from "@/app/admin/types";
 
 type SourceRow = {
   id: string;
@@ -33,6 +34,7 @@ type StoryErrors = Record<number, { headline?: string; summary?: string }>;
 
 type BriefEditorProps = {
   supabase: SupabaseClient<Database>;
+  assignmentEvent?: CandidateStoryAssignmentEvent | null;
 };
 
 type EditorBriefResponse = {
@@ -151,7 +153,7 @@ function toRequestStories(stories: StoryForm[]) {
   }));
 }
 
-export default function BriefEditor({ supabase }: BriefEditorProps) {
+export default function BriefEditor({ supabase, assignmentEvent }: BriefEditorProps) {
   const [selectedDate, setSelectedDate] = useState(getYesterdayLocalDateInput);
   const [loadedDate, setLoadedDate] = useState<string | null>(null);
   const [brief, setBrief] = useState<BriefForm | null>(null);
@@ -171,6 +173,58 @@ export default function BriefEditor({ supabase }: BriefEditorProps) {
 
     return "Draft";
   }, [brief]);
+
+  useEffect(() => {
+    if (!assignmentEvent) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      if (!brief) {
+        setErrorMessage("Load or create a brief draft before assigning a candidate.");
+        return;
+      }
+
+      const { position, headline, summary, sources } = assignmentEvent.payload;
+
+      setBrief((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          stories: current.stories.map((story) => {
+            if (story.position !== position) {
+              return story;
+            }
+
+            return {
+              ...story,
+              headline,
+              summary,
+              sources: sources.map((source) => ({
+                id: makeId(),
+                label: source.label,
+                url: source.url,
+              })),
+            };
+          }),
+        };
+      });
+
+      setStoryErrors((current) => {
+        const next = { ...current };
+        delete next[position];
+        return next;
+      });
+      setErrorMessage(null);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [assignmentEvent, brief]);
 
   async function getAccessToken(): Promise<string | null> {
     const { data, error } = await supabase.auth.getSession();
