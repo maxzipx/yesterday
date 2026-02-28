@@ -18,7 +18,8 @@ NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 ```
 
-Public pages read directly from Supabase on the server. Configure the variables above before running the app.
+Public pages and admin APIs use Supabase with RLS. Configure the variables above before running the app.
+Do not expose service-role keys in browser code or Vercel public env vars.
 
 ## Admin Access
 
@@ -49,6 +50,36 @@ insert into public.admins (user_id)
 values ('YOUR_USER_UUID_HERE')
 on conflict (user_id) do nothing;
 ```
+
+## Vercel Deployment
+
+1. Import this repository in Vercel.
+2. Add environment variables in Vercel Project Settings:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+3. Run SQL in Supabase SQL editor:
+   - [supabase/setup.sql](./supabase/setup.sql)
+   - [supabase/rls.sql](./supabase/rls.sql)
+4. Sign in once via `/admin`, then insert your `auth.users.id` into `public.admins`.
+5. Deploy.
+
+Health check endpoints after deploy:
+- `/health` (human-readable page)
+- `/api/health` (JSON status)
+
+## Post-Deploy QA Checklist
+
+1. Open `/admin` as an allowlisted admin user.
+2. Load yesterday's date and click `Create draft for this date` if none exists.
+3. Fill all 5 stories (headline, summary, optional why-it-matters, sources) and click `Save Draft`.
+4. Confirm draft saves and remains editable in `/admin`.
+5. Confirm draft is not visible on public `/brief` and `/archive`.
+6. Click `Publish` in `/admin`.
+7. Verify `/brief` shows the newly published brief immediately.
+8. Verify `/archive` lists the newly published brief at the top.
+9. Open `/brief/YYYY-MM-DD` and confirm the published story content is displayed.
+10. Sign in with a non-admin account and confirm `/admin` shows `Not authorized` and cannot edit.
+11. Open `/health` and ensure status is `OK`.
 
 ## Local Development
 

@@ -340,6 +340,14 @@ p {
   gap: 0.6rem;
 }
 
+.status-ok {
+  color: #067647;
+}
+
+.status-bad {
+  color: #b42318;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;
