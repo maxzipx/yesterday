@@ -18,14 +18,9 @@ for select
 to authenticated
 using (auth.uid() = user_id);
 
--- Existing admins can manage admin memberships.
-drop policy if exists admins_manage_by_admin on public.admins;
-create policy admins_manage_by_admin
-on public.admins
-for all
-to authenticated
-using (exists (select 1 from public.admins a where a.user_id = auth.uid()))
-with check (exists (select 1 from public.admins a where a.user_id = auth.uid()));
+-- Do not add self-referencing "admins can manage admins" policies here.
+-- They can recurse on public.admins and break auth checks.
+-- Manage admin membership with SQL editor (service role/postgres) instead.
 
 -- 2) Enable RLS on content tables
 alter table public.daily_briefs enable row level security;
