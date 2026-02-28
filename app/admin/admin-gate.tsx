@@ -17,7 +17,6 @@ import type {
 const AUTH_TIMEOUT_MS = 10000;
 
 type AdminAuthState =
-  | { kind: "checking" }
   | { kind: "logged_out"; error?: string }
   | { kind: "unauthorized"; email: string }
   | { kind: "authorized"; email: string };
@@ -105,7 +104,7 @@ export default function AdminGate() {
       };
     }
   }, []);
-  const [authState, setAuthState] = useState<AdminAuthState>({ kind: "checking" });
+  const [authState, setAuthState] = useState<AdminAuthState>({ kind: "logged_out" });
   const [assignmentEvent, setAssignmentEvent] =
     useState<CandidateStoryAssignmentEvent | null>(null);
   const [loadDateEvent, setLoadDateEvent] = useState<BriefLoadDateEvent | null>(null);
@@ -270,17 +269,6 @@ export default function AdminGate() {
         <article className="card">
           <h2>Configuration required</h2>
           <p>{clientError}</p>
-        </article>
-      </section>
-    );
-  }
-
-  if (authState.kind === "checking") {
-    return (
-      <section className="page-stack">
-        <h1 className="page-heading">Admin</h1>
-        <article className="card">
-          <p>Checking session...</p>
         </article>
       </section>
     );
