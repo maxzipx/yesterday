@@ -1,0 +1,335 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireAdminFromRequest } from "@/lib/admin-auth";
+import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+const CLUSTER_SIMILARITY_THRESHOLD = 0.32;
+
+type ArticleRow = Pick<
+  Database["public"]["Tables"]["articles"]["Row"],
+  "id" | "title" | "snippet" | "published_at"
+>;
+
+type ClusterInsert = Database["public"]["Tables"]["story_clusters"]["Insert"];
+type ClusterArticleInsert = Database["public"]["Tables"]["cluster_articles"]["Insert"];
+
+type ClusterRequestBody = {
+  windowDate?: string;
+  replace?: boolean;
+};
+
+type TokenVector = Map<string, number>;
+
+type ClusterArticle = {
+  id: string;
+  title: string;
+  snippet: string | null;
+  publishedAt: string | null;
+  vector: TokenVector;
+};
+
+type WorkingCluster = {
+  members: ClusterArticle[];
+  vectorSum: TokenVector;
+};
+
+function formatDateInput(date: Date): string {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getYesterdayUtcDateInput(): string {
+  const now = new Date();
+  const yesterdayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
+  return formatDateInput(yesterdayUtc);
+}
+
+function normalizeText(title: string, snippet: string | null): string {
+  return `${title} ${snippet ?? ""}`
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function toVector(text: string): TokenVector {
+  const vector: TokenVector = new Map();
+
+  const tokens = text
+    .split(" ")
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 2);
+
+  for (const token of tokens) {
+    vector.set(token, (vector.get(token) ?? 0) + 1);
+  }
+
+  return vector;
+}
+
+function cosineSimilarity(a: TokenVector, b: TokenVector): number {
+  if (a.size === 0 || b.size === 0) {
+    return 0;
+  }
+
+  let dot = 0;
+  let aNorm = 0;
+  let bNorm = 0;
+
+  for (const value of a.values()) {
+    aNorm += value * value;
+  }
+
+  for (const value of b.values()) {
+    bNorm += value * value;
+  }
+
+  for (const [token, valueA] of a.entries()) {
+    const valueB = b.get(token) ?? 0;
+    dot += valueA * valueB;
+  }
+
+  if (aNorm === 0 || bNorm === 0) {
+    return 0;
+  }
+
+  return dot / Math.sqrt(aNorm * bNorm);
+}
+
+function addToVectorSum(target: TokenVector, source: TokenVector) {
+  for (const [token, value] of source.entries()) {
+    target.set(token, (target.get(token) ?? 0) + value);
+  }
+}
+
+function findBestClusterIndex(
+  article: ClusterArticle,
+  clusters: WorkingCluster[],
+): { index: number; similarity: number } {
+  let bestIndex = -1;
+  let bestSimilarity = 0;
+
+  for (let index = 0; index < clusters.length; index += 1) {
+    const similarity = cosineSimilarity(article.vector, clusters[index].vectorSum);
+
+    if (similarity > bestSimilarity) {
+      bestSimilarity = similarity;
+      bestIndex = index;
+    }
+  }
+
+  return { index: bestIndex, similarity: bestSimilarity };
+}
+
+function chooseClusterLabel(cluster: WorkingCluster): string {
+  let bestTitle = cluster.members[0]?.title ?? "Untitled cluster";
+  let bestScore = -1;
+
+  for (const member of cluster.members) {
+    const score = cosineSimilarity(member.vector, cluster.vectorSum);
+    if (score > bestScore) {
+      bestScore = score;
+      bestTitle = member.title;
+    }
+  }
+
+  return bestTitle;
+}
+
+function buildWorkingClusters(articles: ClusterArticle[]): WorkingCluster[] {
+  const clusters: WorkingCluster[] = [];
+
+  for (const article of articles) {
+    const { index, similarity } = findBestClusterIndex(article, clusters);
+
+    if (index >= 0 && similarity >= CLUSTER_SIMILARITY_THRESHOLD) {
+      const cluster = clusters[index];
+      cluster.members.push(article);
+      addToVectorSum(cluster.vectorSum, article.vector);
+      continue;
+    }
+
+    const vectorSum: TokenVector = new Map();
+    addToVectorSum(vectorSum, article.vector);
+    clusters.push({
+      members: [article],
+      vectorSum,
+    });
+  }
+
+  return clusters;
+}
+
+function toWindowBoundsUtc(windowDate: string): { start: string; end: string } {
+  const start = new Date(`${windowDate}T00:00:00.000Z`);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 1);
+
+  return {
+    start: start.toISOString(),
+    end: end.toISOString(),
+  };
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminFromRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as ClusterRequestBody;
+  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
+  const replace = body.replace ?? true;
+
+  if (!DATE_PATTERN.test(windowDate)) {
+    return NextResponse.json(
+      { error: "windowDate must be in YYYY-MM-DD format." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+  const bounds = toWindowBoundsUtc(windowDate);
+
+  let replacedClusterCount = 0;
+  if (replace) {
+    const { data: previousClusters, error: previousError } = await supabase
+      .from("story_clusters")
+      .select("id")
+      .eq("window_date", windowDate);
+
+    if (previousError) {
+      return NextResponse.json(
+        { error: `Failed to load previous clusters: ${previousError.message}` },
+        { status: 500 },
+      );
+    }
+
+    replacedClusterCount = (previousClusters ?? []).length;
+
+    const { error: deleteError } = await supabase
+      .from("story_clusters")
+      .delete()
+      .eq("window_date", windowDate);
+
+    if (deleteError) {
+      return NextResponse.json(
+        { error: `Failed to clear previous clusters: ${deleteError.message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  const { data: articleRows, error: articlesError } = await supabase
+    .from("articles")
+    .select("id, title, snippet, published_at")
+    .gte("published_at", bounds.start)
+    .lt("published_at", bounds.end)
+    .order("published_at", { ascending: false });
+
+  if (articlesError) {
+    return NextResponse.json(
+      { error: `Failed to load articles for clustering: ${articlesError.message}` },
+      { status: 500 },
+    );
+  }
+
+  const articles = ((articleRows ?? []) as ArticleRow[]).map((article) => {
+    const normalized = normalizeText(article.title, article.snippet);
+
+    return {
+      id: article.id,
+      title: article.title,
+      snippet: article.snippet,
+      publishedAt: article.published_at,
+      vector: toVector(normalized),
+    };
+  });
+
+  if (articles.length === 0) {
+    return NextResponse.json({
+      windowDate,
+      replace,
+      replacedClusters: replacedClusterCount,
+      articlesConsidered: 0,
+      clustersCreated: 0,
+      avgClusterSize: 0,
+      largestClusters: [],
+    });
+  }
+
+  const workingClusters = buildWorkingClusters(articles);
+
+  const clusterInsertPayload: ClusterInsert[] = workingClusters.map((cluster) => ({
+    window_date: windowDate,
+    label: chooseClusterLabel(cluster),
+    category: null,
+    score: cluster.members.length,
+  }));
+
+  const { data: insertedClusters, error: insertClustersError } = await supabase
+    .from("story_clusters")
+    .insert(clusterInsertPayload)
+    .select("id, label, score");
+
+  if (insertClustersError) {
+    return NextResponse.json(
+      { error: `Failed to insert clusters: ${insertClustersError.message}` },
+      { status: 500 },
+    );
+  }
+
+  const createdClusters = insertedClusters ?? [];
+  const membershipRows: ClusterArticleInsert[] = [];
+
+  for (let index = 0; index < workingClusters.length; index += 1) {
+    const clusterId = createdClusters[index]?.id;
+    if (!clusterId) {
+      continue;
+    }
+
+    for (const article of workingClusters[index].members) {
+      membershipRows.push({
+        cluster_id: clusterId,
+        article_id: article.id,
+      });
+    }
+  }
+
+  if (membershipRows.length > 0) {
+    const { error: membershipError } = await supabase
+      .from("cluster_articles")
+      .insert(membershipRows);
+
+    if (membershipError) {
+      return NextResponse.json(
+        { error: `Failed to insert cluster memberships: ${membershipError.message}` },
+        { status: 500 },
+      );
+    }
+  }
+
+  const clusterSizes = workingClusters.map((cluster) => ({
+    label: chooseClusterLabel(cluster),
+    size: cluster.members.length,
+  }));
+
+  clusterSizes.sort((a, b) => b.size - a.size);
+
+  return NextResponse.json({
+    windowDate,
+    replace,
+    replacedClusters: replacedClusterCount,
+    articlesConsidered: articles.length,
+    clustersCreated: workingClusters.length,
+    avgClusterSize: Number((articles.length / workingClusters.length).toFixed(2)),
+    largestClusters: clusterSizes.slice(0, 5),
+  });
+}

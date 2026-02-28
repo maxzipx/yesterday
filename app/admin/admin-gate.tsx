@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import BriefEditor from "@/app/admin/brief-editor";
 import RssIngestPanel from "@/app/admin/rss-ingest-panel";
+import ClusterPanel from "@/app/admin/cluster-panel";
 
 type AdminAuthState =
   | { kind: "checking" }
@@ -270,6 +271,7 @@ export default function AdminGate() {
         </button>
       </article>
       <RssIngestPanel supabase={supabase} />
+      <ClusterPanel supabase={supabase} />
       <BriefEditor supabase={supabase} />
     </section>
   );

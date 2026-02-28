@@ -28,6 +28,7 @@ Do not expose service-role keys in browser code or Vercel public env vars.
 - Logged-in users not in `public.admins` see `Not authorized`.
 - Admin editor supports loading a date, creating drafts, editing 5 stories, saving drafts, publishing, and unpublishing.
 - Admin RSS ingestion supports `Ingest RSS for Yesterday` from enabled `feed_sources`.
+- Admin clustering supports `Cluster Yesterday's Articles` with safe replace mode for that date.
 
 ## Supabase Setup
 
