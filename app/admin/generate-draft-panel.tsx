@@ -11,6 +11,21 @@ type GenerateDraftResponse = {
   error?: string;
 };
 
+type FullDraftStep = {
+  step: "ingest" | "cluster" | "rank" | "generate_draft" | "draft_with_ai";
+  ok: boolean;
+  message: string;
+  durationMs: number;
+};
+
+type GenerateFullDraftResponse = {
+  briefId?: string;
+  briefDate?: string;
+  statuses?: FullDraftStep[];
+  stories?: Array<{ id: string; position: number }>;
+  error?: string;
+};
+
 type GenerateDraftPanelProps = {
   supabase: SupabaseClient<Database>;
   onGenerated: (date: string) => void;
@@ -33,18 +48,33 @@ export default function GenerateDraftPanel({
   supabase,
   onGenerated,
 }: GenerateDraftPanelProps) {
-  const [isRunning, setIsRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<GenerateDraftResponse | null>(null);
+  const [isRunningTop5, setIsRunningTop5] = useState(false);
+  const [top5Error, setTop5Error] = useState<string | null>(null);
+  const [top5Result, setTop5Result] = useState<GenerateDraftResponse | null>(null);
+  const [isRunningFull, setIsRunningFull] = useState(false);
+  const [fullError, setFullError] = useState<string | null>(null);
+  const [fullResult, setFullResult] = useState<GenerateFullDraftResponse | null>(null);
+
+  const stepLabels: Record<FullDraftStep["step"], string> = {
+    ingest: "1) Ingest RSS",
+    cluster: "2) Cluster articles",
+    rank: "3) Rank clusters",
+    generate_draft: "4) Generate top-5 draft",
+    draft_with_ai: "5) Generate AI story drafts",
+  };
+
+  function formatDuration(durationMs: number): string {
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  }
 
   async function runGeneration() {
-    setIsRunning(true);
-    setError(null);
+    setIsRunningTop5(true);
+    setTop5Error(null);
 
     const { data, error: sessionError } = await supabase.auth.getSession();
     if (sessionError || !data.session?.access_token) {
-      setIsRunning(false);
-      setError("Session expired. Please sign in again.");
+      setIsRunningTop5(false);
+      setTop5Error("Session expired. Please sign in again.");
       return;
     }
 
@@ -60,16 +90,58 @@ export default function GenerateDraftPanel({
     });
 
     const payload = (await response.json()) as GenerateDraftResponse;
-    setIsRunning(false);
+    setIsRunningTop5(false);
 
     if (!response.ok) {
-      setResult(null);
-      setError(payload.error ?? "Generate draft failed.");
+      setTop5Result(null);
+      setTop5Error(payload.error ?? "Generate draft failed.");
       return;
     }
 
-    setResult(payload);
+    setTop5Result(payload);
     onGenerated(payload.windowDate);
+
+    if (typeof window !== "undefined") {
+      window.location.hash = "brief-editor";
+    }
+  }
+
+  async function runFullGeneration() {
+    setIsRunningFull(true);
+    setFullError(null);
+    setFullResult(null);
+
+    const { data, error: sessionError } = await supabase.auth.getSession();
+    if (sessionError || !data.session?.access_token) {
+      setIsRunningFull(false);
+      setFullError("Session expired. Please sign in again.");
+      return;
+    }
+
+    const response = await fetch("/api/admin/generate-full-draft", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
+      body: JSON.stringify({
+        windowDate: getYesterdayDateInput(),
+      }),
+    });
+
+    const payload = (await response.json()) as GenerateFullDraftResponse;
+    setIsRunningFull(false);
+
+    if (!response.ok) {
+      setFullResult(payload);
+      setFullError(payload.error ?? "Generate full draft failed.");
+      return;
+    }
+
+    setFullResult(payload);
+    if (payload.briefDate) {
+      onGenerated(payload.briefDate);
+    }
 
     if (typeof window !== "undefined") {
       window.location.hash = "brief-editor";
@@ -79,23 +151,76 @@ export default function GenerateDraftPanel({
   return (
     <article className="card">
       <h2>Draft Generator</h2>
-      <p className="muted">Create or overwrite yesterday&apos;s draft using top 5 candidates.</p>
-      <button className="button" type="button" onClick={runGeneration} disabled={isRunning}>
-        {isRunning ? "Generating..." : "Generate Draft From Top 5"}
-      </button>
+      <p className="muted">Create or overwrite yesterday&apos;s draft using ranked candidates.</p>
 
-      {error ? <p className="error-text">{error}</p> : null}
+      <div className="editor-actions">
+        <button
+          className="button"
+          type="button"
+          onClick={runFullGeneration}
+          disabled={isRunningFull || isRunningTop5}
+        >
+          {isRunningFull ? "Generating Full Draft..." : "Generate Full Draft"}
+        </button>
+        <button
+          className="button button-muted"
+          type="button"
+          onClick={runGeneration}
+          disabled={isRunningTop5 || isRunningFull}
+        >
+          {isRunningTop5 ? "Generating..." : "Generate Draft From Top 5"}
+        </button>
+      </div>
 
-      {result ? (
+      {top5Error ? <p className="error-text">{top5Error}</p> : null}
+
+      {top5Result ? (
         <div className="generate-summary">
           <p>
-            <strong>Window date:</strong> {result.windowDate}
+            <strong>Window date:</strong> {top5Result.windowDate}
           </p>
           <p>
-            <strong>Brief ID:</strong> {result.briefId}
+            <strong>Brief ID:</strong> {top5Result.briefId}
           </p>
           <p className="muted">Draft generated. Editor is ready below.</p>
         </div>
+      ) : null}
+
+      {isRunningFull ? (
+        <div className="generate-summary">
+          <p className="muted">Running full pipeline on server...</p>
+          <ul className="inline-list">
+            {Object.values(stepLabels).map((label) => (
+              <li key={label}>{label}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {fullError ? <p className="error-text">{fullError}</p> : null}
+
+      {fullResult ? (
+        <div className="generate-summary">
+          <p>
+            <strong>Window date:</strong> {fullResult.briefDate ?? getYesterdayDateInput()}
+          </p>
+          <p>
+            <strong>Brief ID:</strong> {fullResult.briefId ?? "N/A"}
+          </p>
+          <p className="muted">Pipeline progress:</p>
+          <ul className="inline-list">
+            {(fullResult.statuses ?? []).map((status) => (
+              <li key={`${status.step}-${status.message}`}>
+                {stepLabels[status.step]}: {status.ok ? "OK" : "Failed"} ({formatDuration(status.durationMs)}) -{" "}
+                {status.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {fullResult?.stories?.length ? (
+        <p className="muted">{fullResult.stories.length} stories updated with AI drafts.</p>
       ) : null}
     </article>
   );
