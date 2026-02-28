@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
   const supabase = getSupabaseServerClientForToken(auth.accessToken);
 
   try {
-    const result = await draftBriefWithAi(supabase, briefId, 2);
+    const result = await draftBriefWithAi(supabase, briefId, 1);
 
     return NextResponse.json({
       briefId,

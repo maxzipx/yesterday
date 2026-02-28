@@ -20,6 +20,13 @@ type CandidatesResponse = {
   error?: string;
 };
 
+type ReorderResponse = {
+  windowDate: string;
+  reordered: boolean;
+  orderedClusterIds: string[];
+  error?: string;
+};
+
 type ClusterDetailResponse = {
   cluster: {
     id: string;
@@ -56,6 +63,28 @@ function getYesterdayDateInput(): string {
   return formatDateInput(yesterday);
 }
 
+function resequenceRanks(items: CandidateListItem[]): CandidateListItem[] {
+  return items.map((item, index) => ({ ...item, rank: index + 1 }));
+}
+
+function moveCandidate(
+  items: CandidateListItem[],
+  sourceClusterId: string,
+  targetClusterId: string,
+): CandidateListItem[] {
+  const sourceIndex = items.findIndex((item) => item.clusterId === sourceClusterId);
+  const targetIndex = items.findIndex((item) => item.clusterId === targetClusterId);
+
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return items;
+  }
+
+  const next = [...items];
+  const [moved] = next.splice(sourceIndex, 1);
+  next.splice(targetIndex, 0, moved);
+  return resequenceRanks(next);
+}
+
 export default function CandidatesPanel({
   supabase,
   onAssignStory,
@@ -63,6 +92,9 @@ export default function CandidatesPanel({
   const [windowDate, setWindowDate] = useState(getYesterdayDateInput);
   const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+  const [draggingClusterId, setDraggingClusterId] = useState<string | null>(null);
+  const [hasOrderChanges, setHasOrderChanges] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeClusterId, setActiveClusterId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ClusterDetailResponse["cluster"] | null>(null);
@@ -110,10 +142,50 @@ export default function CandidatesPanel({
     if (!response.ok) {
       setError(payload.error ?? "Failed to load candidates.");
       setCandidates([]);
+      setHasOrderChanges(false);
       return;
     }
 
-    setCandidates(payload.candidates ?? []);
+    setCandidates(resequenceRanks(payload.candidates ?? []));
+    setHasOrderChanges(false);
+  }
+
+  async function saveOrder() {
+    if (!hasOrderChanges || candidates.length === 0) {
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setError("Session expired. Please sign in again.");
+      return;
+    }
+
+    setIsSavingOrder(true);
+    setError(null);
+
+    const response = await fetch("/api/admin/candidates/reorder", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        windowDate,
+        orderedClusterIds: candidates.map((candidate) => candidate.clusterId),
+      }),
+    });
+
+    const payload = (await response.json()) as ReorderResponse;
+    setIsSavingOrder(false);
+
+    if (!response.ok) {
+      setError(payload.error ?? "Failed to save candidate order.");
+      return;
+    }
+
+    setCandidates((current) => resequenceRanks(current));
+    setHasOrderChanges(false);
   }
 
   async function openClusterDetail(clusterId: string) {
@@ -154,6 +226,16 @@ export default function CandidatesPanel({
     setDetail(null);
   }
 
+  function moveCandidateRow(sourceClusterId: string, targetClusterId: string) {
+    setCandidates((current) => {
+      const next = moveCandidate(current, sourceClusterId, targetClusterId);
+      if (next !== current) {
+        setHasOrderChanges(true);
+      }
+      return next;
+    });
+  }
+
   function assignToStory(position: number) {
     if (!detail) {
       return;
@@ -176,6 +258,7 @@ export default function CandidatesPanel({
   return (
     <article className="card">
       <h2>{title}</h2>
+      <p className="muted">Top 15 ranked clusters. Drag to reorder, then save.</p>
       <div className="candidates-toolbar">
         <label className="field field-compact">
           <span>Window date</span>
@@ -186,8 +269,16 @@ export default function CandidatesPanel({
             onChange={(event) => setWindowDate(event.target.value)}
           />
         </label>
-        <button className="button button-muted" type="button" onClick={loadCandidates} disabled={isLoading}>
+        <button className="button button-muted" type="button" onClick={loadCandidates} disabled={isLoading || isSavingOrder}>
           {isLoading ? "Loading..." : "Load"}
+        </button>
+        <button
+          className="button"
+          type="button"
+          onClick={() => void saveOrder()}
+          disabled={isSavingOrder || isLoading || !hasOrderChanges}
+        >
+          {isSavingOrder ? "Saving..." : "Save Order"}
         </button>
       </div>
 
@@ -214,7 +305,21 @@ export default function CandidatesPanel({
               </tr>
             ) : (
               candidates.map((candidate) => (
-                <tr key={candidate.clusterId}>
+                <tr
+                  key={candidate.clusterId}
+                  draggable
+                  onDragStart={() => setDraggingClusterId(candidate.clusterId)}
+                  onDragEnd={() => setDraggingClusterId(null)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    if (!draggingClusterId) {
+                      return;
+                    }
+                    moveCandidateRow(draggingClusterId, candidate.clusterId);
+                  }}
+                  className={draggingClusterId === candidate.clusterId ? "candidate-row-dragging" : ""}
+                >
                   <td>{candidate.rank}</td>
                   <td>{candidate.label}</td>
                   <td>{candidate.score}</td>
@@ -292,3 +397,4 @@ export default function CandidatesPanel({
     </article>
   );
 }
+

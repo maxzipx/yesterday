@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeAiFlags } from "@/lib/ai-flags";
 import { generateStoryDraftFromCluster } from "@/lib/storyDraft";
 import type { Database, Json } from "@/lib/supabase/types";
 
@@ -57,7 +58,7 @@ function mapDraftedStory(row: BriefStoryRow): DraftedStory {
     summary: row.summary,
     whyItMatters: row.why_it_matters,
     confidence: row.confidence,
-    flags: normalizeFlags(row.flags),
+    flags: normalizeAiFlags(normalizeFlags(row.flags)),
   };
 }
 

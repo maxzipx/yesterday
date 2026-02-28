@@ -5,6 +5,7 @@ import { ingestRssForWindowDate } from "@/app/api/admin/ingest-rss/route";
 import { rankClustersForWindowDate } from "@/app/api/admin/rank/route";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { AdminAiDraftError, draftBriefWithAi } from "@/lib/admin-ai-draft";
+import { ollamaChat } from "@/lib/ollama";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 
@@ -18,7 +19,7 @@ type GenerateFullDraftRequestBody = {
 };
 
 type StepStatus = {
-  step: "ingest" | "cluster" | "rank" | "generate_draft" | "draft_with_ai";
+  step: "ollama_ping" | "ingest" | "cluster" | "rank" | "generate_draft" | "draft_with_ai";
   ok: boolean;
   message: string;
   durationMs: number;
@@ -66,9 +67,23 @@ export async function POST(request: NextRequest) {
 
   const supabase = getSupabaseServerClientForToken(auth.accessToken);
   const statuses: StepStatus[] = [];
-  let activeStep: StepStatus["step"] = "ingest";
+  let activeStep: StepStatus["step"] = "ollama_ping";
 
   try {
+    activeStep = "ollama_ping";
+    const pingStartedAt = Date.now();
+    const ping = await ollamaChat({
+      messages: [{ role: "user", content: "Respond with: OK" }],
+      temperature: 0,
+      timeoutMs: 25_000,
+    });
+    statuses.push({
+      step: "ollama_ping",
+      ok: true,
+      durationMs: Date.now() - pingStartedAt,
+      message: `Ollama reachable (${ping.content.slice(0, 40)}).`,
+    });
+
     activeStep = "ingest";
     const ingestStartedAt = Date.now();
     const ingest = await ingestRssForWindowDate(supabase, windowDate);
@@ -111,7 +126,7 @@ export async function POST(request: NextRequest) {
 
     activeStep = "draft_with_ai";
     const aiStartedAt = Date.now();
-    const aiDraft = await draftBriefWithAi(supabase, draft.briefId, 2);
+    const aiDraft = await draftBriefWithAi(supabase, draft.briefId, 1);
     const failedAi = aiDraft.statuses.filter((status) => !status.ok);
     if (failedAi.length > 0) {
       const failureSummary = failedAi

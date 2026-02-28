@@ -1,5 +1,6 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normalizeAiFlags } from "@/lib/ai-flags";
 import { ollamaChat } from "@/lib/ollama";
 import { getRepresentativeArticles } from "@/lib/representative";
 import type { Database } from "@/lib/supabase/types";
@@ -89,12 +90,13 @@ function validateDraftPayload(payload: DraftPayload): GeneratedStoryDraft {
     typeof payload.confidence === "number"
       ? Math.max(0, Math.min(1, payload.confidence))
       : Number.NaN;
-  const flags = Array.isArray(payload.flags)
+  const rawFlags = Array.isArray(payload.flags)
     ? payload.flags
         .filter((flag): flag is string => typeof flag === "string")
         .map((flag) => flag.trim())
         .filter((flag) => flag.length > 0)
     : [];
+  const flags = normalizeAiFlags(rawFlags);
 
   const validationErrors: string[] = [];
 
@@ -139,7 +141,7 @@ function validateDraftPayload(payload: DraftPayload): GeneratedStoryDraft {
     summary,
     why_it_matters: whyItMatters,
     confidence,
-    flags: [...new Set(flags)],
+    flags,
   };
 }
 
@@ -184,7 +186,7 @@ async function generateAttempt(
     ],
     format: OUTPUT_SCHEMA,
     temperature: 0.2,
-    timeoutMs: 90_000,
+    timeoutMs: 180_000,
   });
 
   console.info("[story-draft] ollama response", {

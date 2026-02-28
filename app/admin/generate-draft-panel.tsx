@@ -12,7 +12,7 @@ type GenerateDraftResponse = {
 };
 
 type FullDraftStep = {
-  step: "ingest" | "cluster" | "rank" | "generate_draft" | "draft_with_ai";
+  step: "ollama_ping" | "ingest" | "cluster" | "rank" | "generate_draft" | "draft_with_ai";
   ok: boolean;
   message: string;
   durationMs: number;
@@ -56,6 +56,7 @@ export default function GenerateDraftPanel({
   const [fullResult, setFullResult] = useState<GenerateFullDraftResponse | null>(null);
 
   const stepLabels: Record<FullDraftStep["step"], string> = {
+    ollama_ping: "0) Check Ollama",
     ingest: "1) Ingest RSS",
     cluster: "2) Cluster articles",
     rank: "3) Rank clusters",
@@ -151,7 +152,9 @@ export default function GenerateDraftPanel({
   return (
     <article className="card">
       <h2>Draft Generator</h2>
-      <p className="muted">Create or overwrite yesterday&apos;s draft using ranked candidates.</p>
+      <p className="muted">
+        Create or overwrite yesterday&apos;s draft using ranked candidates (respects saved manual order).
+      </p>
 
       <div className="editor-actions">
         <button

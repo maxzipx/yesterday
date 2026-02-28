@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
+import { normalizeAiFlags } from "@/lib/ai-flags";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database, Json } from "@/lib/supabase/types";
 
@@ -83,10 +84,12 @@ function normalizeFlags(raw: Json): string[] {
     return [];
   }
 
-  return raw
+  const values = raw
     .filter((item): item is string => typeof item === "string")
     .map((item) => item.trim())
     .filter((item) => item.length > 0);
+
+  return normalizeAiFlags(values);
 }
 
 function sanitizeFlags(input: string[] | undefined): string[] {
@@ -94,12 +97,12 @@ function sanitizeFlags(input: string[] | undefined): string[] {
     return [];
   }
 
-  return [...new Set(
+  return normalizeAiFlags(
     input
       .filter((flag): flag is string => typeof flag === "string")
       .map((flag) => flag.trim())
       .filter((flag) => flag.length > 0),
-  )];
+  );
 }
 
 function sanitizeConfidence(input: number | null | undefined): number | null {

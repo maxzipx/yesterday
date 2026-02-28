@@ -37,6 +37,8 @@ type BriefForm = {
 };
 
 type StoryErrors = Record<number, { headline?: string; summary?: string }>;
+type AiRunState = "pending" | "running" | "done" | "failed";
+type AiRunStatus = { state: AiRunState; message: string };
 
 type BriefEditorProps = {
   supabase: SupabaseClient<Database>;
@@ -81,18 +83,6 @@ type DraftedStoryResponse = {
     confidence: number | null;
     flags: string[];
   };
-  error?: string;
-};
-
-type DraftedBriefResponse = {
-  briefId: string;
-  statuses: Array<{
-    storyId: string;
-    position: number;
-    ok: boolean;
-    message: string;
-  }>;
-  stories: DraftedStoryResponse["story"][];
   error?: string;
 };
 
@@ -243,6 +233,7 @@ export default function BriefEditor({
   const [generatingPositions, setGeneratingPositions] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [storyErrors, setStoryErrors] = useState<StoryErrors>({});
+  const [aiRunStatuses, setAiRunStatuses] = useState<Record<number, AiRunStatus>>({});
   const [publishAnyway, setPublishAnyway] = useState(false);
   const [showPublishWarning, setShowPublishWarning] = useState(false);
 
@@ -282,6 +273,14 @@ export default function BriefEditor({
       })
       .filter((warning) => warning.reasons.length > 0);
   }, [brief]);
+
+  const orderedAiRunStatuses = useMemo(
+    () =>
+      Object.entries(aiRunStatuses)
+        .map(([position, status]) => ({ position: Number(position), ...status }))
+        .sort((a, b) => a.position - b.position),
+    [aiRunStatuses],
+  );
 
   useEffect(() => {
     if (!assignmentEvent) {
@@ -332,6 +331,7 @@ export default function BriefEditor({
       });
       setShowPublishWarning(false);
       setPublishAnyway(false);
+      setAiRunStatuses({});
       setErrorMessage(null);
     }, 0);
 
@@ -402,6 +402,7 @@ export default function BriefEditor({
     setBrief(mapBriefPayload(payload.brief));
     setShowPublishWarning(false);
     setPublishAnyway(false);
+    setAiRunStatuses({});
   }
 
   async function loadBrief() {
@@ -463,6 +464,7 @@ export default function BriefEditor({
         setShowPublishWarning(false);
         setPublishAnyway(false);
       }
+      setAiRunStatuses({});
     }
   }
 
@@ -581,6 +583,31 @@ export default function BriefEditor({
     });
   }
 
+  async function requestAiDraftForStory(
+    token: string,
+    briefId: string,
+    storyId: string,
+  ): Promise<DraftedStoryResponse["story"]> {
+    const response = await fetch("/api/admin/ai/draft-story", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        briefId,
+        storyId,
+      }),
+    });
+
+    const payload = (await response.json()) as DraftedStoryResponse;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "AI draft failed.");
+    }
+
+    return payload.story;
+  }
+
   async function generateAiDraftForStory(story: StoryForm) {
     if (!brief || !story.id) {
       return;
@@ -609,33 +636,34 @@ export default function BriefEditor({
       next.add(story.position);
       return next;
     });
+    setAiRunStatuses((current) => ({
+      ...current,
+      [story.position]: { state: "running", message: "Generating..." },
+    }));
     setErrorMessage(null);
 
-    const response = await fetch("/api/admin/ai/draft-story", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        briefId: brief.id,
-        storyId: story.id,
-      }),
-    });
-
-    const payload = (await response.json()) as DraftedStoryResponse;
-    setGeneratingPositions((current) => {
-      const next = new Set(current);
-      next.delete(story.position);
-      return next;
-    });
-
-    if (!response.ok) {
-      setErrorMessage(payload.error ?? `Failed to draft Story ${story.position}.`);
-      return;
+    try {
+      const drafted = await requestAiDraftForStory(token, brief.id, story.id);
+      applyDraftedStoryUpdate(drafted);
+      setAiRunStatuses((current) => ({
+        ...current,
+        [story.position]: { state: "done", message: "Drafted" },
+      }));
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : `Failed to draft Story ${story.position}.`;
+      setErrorMessage(message);
+      setAiRunStatuses((current) => ({
+        ...current,
+        [story.position]: { state: "failed", message },
+      }));
+    } finally {
+      setGeneratingPositions((current) => {
+        const next = new Set(current);
+        next.delete(story.position);
+        return next;
+      });
     }
-
-    applyDraftedStoryUpdate(payload.story);
   }
 
   async function generateAiDraftsForBrief() {
@@ -651,43 +679,75 @@ export default function BriefEditor({
 
     setIsGeneratingAi(true);
     setErrorMessage(null);
-    setGeneratingPositions(
-      new Set(
-        brief.stories
-          .filter((story) => story.clusterId)
-          .map((story) => story.position),
-      ),
-    );
+    const storiesToDraft = brief.stories
+      .filter((story) => story.clusterId && story.id)
+      .sort((a, b) => a.position - b.position);
 
-    const response = await fetch("/api/admin/ai/draft-brief", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ briefId: brief.id }),
-    });
-
-    const payload = (await response.json()) as DraftedBriefResponse;
-    setIsGeneratingAi(false);
-    setGeneratingPositions(new Set());
-
-    if (!response.ok) {
-      setErrorMessage(payload.error ?? "Failed to generate AI drafts.");
+    if (storiesToDraft.length === 0) {
+      setIsGeneratingAi(false);
+      setErrorMessage("No stories with cluster assignments to draft.");
       return;
     }
 
-    payload.stories.forEach((story) => {
-      applyDraftedStoryUpdate(story);
-    });
+    setAiRunStatuses(
+      storiesToDraft.reduce<Record<number, AiRunStatus>>((acc, story) => {
+        acc[story.position] = { state: "pending", message: "Queued" };
+        return acc;
+      }, {}),
+    );
 
-    const failedStatuses = payload.statuses.filter((status) => !status.ok);
-    if (failedStatuses.length > 0) {
-      const details = failedStatuses
-        .map((status) => `Story ${status.position}: ${status.message}`)
+    const failures: Array<{ position: number; message: string }> = [];
+
+    for (const story of storiesToDraft) {
+      if (!story.id) {
+        continue;
+      }
+
+      setGeneratingPositions((current) => {
+        const next = new Set(current);
+        next.add(story.position);
+        return next;
+      });
+      setAiRunStatuses((current) => ({
+        ...current,
+        [story.position]: { state: "running", message: "Generating..." },
+      }));
+
+      try {
+        const drafted = await requestAiDraftForStory(token, brief.id, story.id);
+        applyDraftedStoryUpdate(drafted);
+        setAiRunStatuses((current) => ({
+          ...current,
+          [story.position]: { state: "done", message: "Drafted" },
+        }));
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : `Failed to draft Story ${story.position}.`;
+        failures.push({ position: story.position, message });
+        setAiRunStatuses((current) => ({
+          ...current,
+          [story.position]: { state: "failed", message },
+        }));
+      } finally {
+        setGeneratingPositions((current) => {
+          const next = new Set(current);
+          next.delete(story.position);
+          return next;
+        });
+      }
+    }
+
+    setIsGeneratingAi(false);
+
+    if (failures.length > 0) {
+      const details = failures
+        .map((failure) => `Story ${failure.position}: ${failure.message}`)
         .join(" | ");
       setErrorMessage(`Some stories were not drafted: ${details}`);
+      return;
     }
+
+    setErrorMessage(null);
   }
 
   function handlePublish() {
@@ -773,10 +833,29 @@ export default function BriefEditor({
             {isGeneratingAi ? "Generating AI Drafts..." : "Generate AI Drafts"}
           </button>
 
+          {orderedAiRunStatuses.length > 0 ? (
+            <div className="ai-progress-card">
+              <p className="muted">AI generation progress</p>
+              <ul className="inline-list ai-progress-list">
+                {orderedAiRunStatuses.map((status) => (
+                  <li key={`ai-run-${status.position}`}>
+                    Story {status.position}:{" "}
+                    <span className={`ai-progress-state ai-progress-${status.state}`}>
+                      {status.state}
+                    </span>
+                    {" - "}
+                    {status.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           <div className="editor-story-grid">
             {brief.stories.map((story) => {
               const fieldErrors = storyErrors[story.position];
               const isGeneratingStory = generatingPositions.has(story.position);
+              const runStatus = aiRunStatuses[story.position];
 
               return (
                 <article className="story-editor-card" key={story.position}>
@@ -798,6 +877,11 @@ export default function BriefEditor({
                     </button>
                   </div>
                   <p className="muted">Cluster: {story.clusterId ?? "None assigned"}</p>
+                  {runStatus ? (
+                    <p className={`ai-progress-state ai-progress-${runStatus.state}`}>
+                      {runStatus.state}: {runStatus.message}
+                    </p>
+                  ) : null}
                   <div className="story-ai-meta">
                     <span className={confidenceClassName(story.confidence)}>
                       {confidenceLabel(story.confidence)}

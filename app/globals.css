@@ -425,6 +425,37 @@ p {
   gap: 0.6rem;
 }
 
+.ai-progress-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fbff;
+  padding: 0.7rem 0.8rem;
+}
+
+.ai-progress-list {
+  margin-top: 0.35rem;
+}
+
+.ai-progress-state {
+  font-weight: 700;
+}
+
+.ai-progress-pending {
+  color: #344054;
+}
+
+.ai-progress-running {
+  color: #175cd3;
+}
+
+.ai-progress-done {
+  color: #067647;
+}
+
+.ai-progress-failed {
+  color: #b42318;
+}
+
 .status-ok {
   color: #067647;
 }
@@ -497,6 +528,15 @@ p {
   padding: 0.45rem 0.5rem;
   border-bottom: 1px solid var(--border);
   vertical-align: top;
+}
+
+.candidate-row-dragging {
+  opacity: 0.55;
+  background: #eef4ff;
+}
+
+.candidates-table tbody tr[draggable="true"] {
+  cursor: move;
 }
 
 .modal-backdrop {

@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const LIMIT = 30;
+const LIMIT = 15;
 
 type CandidateRow = Database["public"]["Tables"]["cluster_candidates"]["Row"];
 type ClusterRow = Pick<
