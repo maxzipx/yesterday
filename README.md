@@ -27,6 +27,7 @@ Do not expose service-role keys in browser code or Vercel public env vars.
 - Authorization is checked server-side against `public.admins(user_id)`.
 - Logged-in users not in `public.admins` see `Not authorized`.
 - Admin editor supports loading a date, creating drafts, editing 5 stories, saving drafts, publishing, and unpublishing.
+- Admin RSS ingestion supports `Ingest RSS for Yesterday` from enabled `feed_sources`.
 
 ## Supabase Setup
 
@@ -44,6 +45,15 @@ Then run [supabase/rls.sql](./supabase/rls.sql) to enable RLS policies and creat
 For Week 2 candidate pipeline schema (ingestion + clustering), run:
 
 - [supabase/week2_pipeline.sql](./supabase/week2_pipeline.sql)
+
+Add feed source rows before running ingestion:
+
+```sql
+insert into public.feed_sources (name, url, is_enabled)
+values
+  ('BBC World', 'https://feeds.bbci.co.uk/news/world/rss.xml', true),
+  ('Reuters World', 'https://feeds.reuters.com/Reuters/worldNews', true);
+```
 
 After your first sign-in, add your account as admin:
 

@@ -348,6 +348,16 @@ p {
   color: #b42318;
 }
 
+.ingest-summary {
+  margin-top: 0.85rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ingest-failures {
+  margin-top: 0.35rem;
+}
+
 @media (max-width: 640px) {
   .header-inner {
     flex-direction: column;

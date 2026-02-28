@@ -32,6 +32,50 @@ export type Database = {
           },
         ];
       };
+      articles: {
+        Row: {
+          fetched_at: string;
+          id: string;
+          published_at: string | null;
+          publisher: string | null;
+          raw: Json;
+          snippet: string | null;
+          source_id: string | null;
+          title: string;
+          url: string;
+        };
+        Insert: {
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          publisher?: string | null;
+          raw?: Json;
+          snippet?: string | null;
+          source_id?: string | null;
+          title: string;
+          url: string;
+        };
+        Update: {
+          fetched_at?: string;
+          id?: string;
+          published_at?: string | null;
+          publisher?: string | null;
+          raw?: Json;
+          snippet?: string | null;
+          source_id?: string | null;
+          title?: string;
+          url?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "articles_source_id_fkey";
+            columns: ["source_id"];
+            isOneToOne: false;
+            referencedRelation: "feed_sources";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       brief_stories: {
         Row: {
           brief_id: string;
@@ -103,6 +147,119 @@ export type Database = {
           status?: "draft" | "published";
           title?: string | null;
           updated_at?: string;
+        };
+        Relationships: [];
+      };
+      cluster_articles: {
+        Row: {
+          article_id: string;
+          cluster_id: string;
+        };
+        Insert: {
+          article_id: string;
+          cluster_id: string;
+        };
+        Update: {
+          article_id?: string;
+          cluster_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cluster_articles_article_id_fkey";
+            columns: ["article_id"];
+            isOneToOne: false;
+            referencedRelation: "articles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "cluster_articles_cluster_id_fkey";
+            columns: ["cluster_id"];
+            isOneToOne: false;
+            referencedRelation: "story_clusters";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      cluster_candidates: {
+        Row: {
+          cluster_id: string;
+          created_at: string;
+          id: string;
+          rank: number;
+          window_date: string;
+        };
+        Insert: {
+          cluster_id: string;
+          created_at?: string;
+          id?: string;
+          rank: number;
+          window_date: string;
+        };
+        Update: {
+          cluster_id?: string;
+          created_at?: string;
+          id?: string;
+          rank?: number;
+          window_date?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "cluster_candidates_cluster_id_fkey";
+            columns: ["cluster_id"];
+            isOneToOne: false;
+            referencedRelation: "story_clusters";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      feed_sources: {
+        Row: {
+          created_at: string | null;
+          id: string;
+          is_enabled: boolean;
+          name: string;
+          url: string;
+        };
+        Insert: {
+          created_at?: string | null;
+          id?: string;
+          is_enabled?: boolean;
+          name: string;
+          url: string;
+        };
+        Update: {
+          created_at?: string | null;
+          id?: string;
+          is_enabled?: boolean;
+          name?: string;
+          url?: string;
+        };
+        Relationships: [];
+      };
+      story_clusters: {
+        Row: {
+          category: string | null;
+          created_at: string | null;
+          id: string;
+          label: string | null;
+          score: number;
+          window_date: string;
+        };
+        Insert: {
+          category?: string | null;
+          created_at?: string | null;
+          id?: string;
+          label?: string | null;
+          score?: number;
+          window_date: string;
+        };
+        Update: {
+          category?: string | null;
+          created_at?: string | null;
+          id?: string;
+          label?: string | null;
+          score?: number;
+          window_date?: string;
         };
         Relationships: [];
       };
