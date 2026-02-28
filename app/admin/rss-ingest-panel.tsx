@@ -48,27 +48,43 @@ export default function RssIngestPanel({ supabase }: RssIngestPanelProps) {
       return;
     }
 
-    const response = await fetch("/api/admin/ingest-rss", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${data.session.access_token}`,
-      },
-      body: JSON.stringify({
-        windowDate: getYesterdayDateInput(),
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
 
-    const payload = (await response.json()) as IngestResult & { error?: string };
-    setIsRunning(false);
+    try {
+      const response = await fetch("/api/admin/ingest-rss", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          windowDate: getYesterdayDateInput(),
+        }),
+        signal: controller.signal,
+      });
 
-    if (!response.ok) {
-      setError(payload.error ?? "RSS ingestion failed.");
+      const payload = (await response.json()) as IngestResult & { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "RSS ingestion failed.");
+        setResult(null);
+        return;
+      }
+
+      setResult(payload);
+    } catch (requestError) {
+      if (requestError instanceof Error && requestError.name === "AbortError") {
+        setError(
+          "RSS ingestion timed out after 60s. Check feed availability and server logs, then try again.",
+        );
+      } else {
+        setError(requestError instanceof Error ? requestError.message : "RSS ingestion failed.");
+      }
       setResult(null);
-      return;
+    } finally {
+      clearTimeout(timeout);
+      setIsRunning(false);
     }
-
-    setResult(payload);
   }
 
   return (
@@ -98,6 +114,9 @@ export default function RssIngestPanel({ supabase }: RssIngestPanelProps) {
           <p>
             <strong>Duplicates skipped:</strong> {result.duplicatesSkipped}
           </p>
+          {result.newArticlesInserted === 0 && result.duplicatesSkipped > 0 ? (
+            <p className="muted">No new URLs were found in enabled feeds for this run.</p>
+          ) : null}
           {result.invalidItemsSkipped > 0 ? (
             <p>
               <strong>Invalid items skipped:</strong> {result.invalidItemsSkipped}
