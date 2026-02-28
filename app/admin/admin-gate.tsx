@@ -290,6 +290,7 @@ export default function AdminGate() {
                 autoComplete="email"
                 value={emailInput}
                 onChange={(event) => setEmailInput(event.target.value)}
+                suppressHydrationWarning
                 required
               />
             </label>
@@ -301,10 +302,16 @@ export default function AdminGate() {
                 autoComplete="current-password"
                 value={passwordInput}
                 onChange={(event) => setPasswordInput(event.target.value)}
+                suppressHydrationWarning
                 required
               />
             </label>
-            <button className="button" type="submit" disabled={isSubmitting}>
+            <button
+              className="button"
+              type="submit"
+              disabled={isSubmitting}
+              suppressHydrationWarning
+            >
               {isSubmitting ? "Signing in..." : "Sign in"}
             </button>
           </form>
