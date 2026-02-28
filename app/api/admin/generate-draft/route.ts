@@ -220,10 +220,13 @@ export async function generateDraftFromTopClusters(
 
     storyRows.push({
       brief_id: "",
+      cluster_id: candidate.cluster_id,
       position,
       headline: cluster?.label?.trim() || `Cluster ${candidate.cluster_id}`,
       summary: "Summary pending",
       why_it_matters: null,
+      confidence: null,
+      flags: [],
       sources: sourcesForStory,
     });
   }

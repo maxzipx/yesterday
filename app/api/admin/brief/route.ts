@@ -19,9 +19,12 @@ type SourceInput = {
 
 type StoryInput = {
   position: number;
+  clusterId?: string | null;
   headline: string;
   summary: string;
   whyItMatters?: string | null;
+  confidence?: number | null;
+  flags?: string[];
   sources?: SourceInput[];
 };
 
@@ -31,6 +34,7 @@ type BriefMutationRequest = {
   action: BriefAction;
   date: string;
   title?: string | null;
+  publishAnyway?: boolean;
   stories?: StoryInput[];
 };
 
@@ -74,12 +78,47 @@ function sanitizeSources(input: SourceInput[] | undefined): SourceInput[] {
     .filter((source) => source.label.length > 0 || source.url.length > 0);
 }
 
+function normalizeFlags(raw: Json): string[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+
+  return raw
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function sanitizeFlags(input: string[] | undefined): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+
+  return [...new Set(
+    input
+      .filter((flag): flag is string => typeof flag === "string")
+      .map((flag) => flag.trim())
+      .filter((flag) => flag.length > 0),
+  )];
+}
+
+function sanitizeConfidence(input: number | null | undefined): number | null {
+  if (typeof input !== "number" || Number.isNaN(input)) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(1, input));
+}
+
 function normalizeStoryInput(story: StoryInput) {
   return {
     position: story.position,
+    clusterId: story.clusterId ?? null,
     headline: story.headline.trim(),
     summary: story.summary.trim(),
     whyItMatters: story.whyItMatters?.trim() || null,
+    confidence: sanitizeConfidence(story.confidence),
+    flags: sanitizeFlags(story.flags),
     sources: sanitizeSources(story.sources),
   };
 }
@@ -147,7 +186,7 @@ async function getStoriesForBrief(
   const { data, error } = await supabase
     .from("brief_stories")
     .select(
-      "id, brief_id, position, headline, summary, why_it_matters, sources, created_at, updated_at",
+      "id, brief_id, position, cluster_id, headline, summary, why_it_matters, confidence, flags, sources, created_at, updated_at",
     )
     .eq("brief_id", briefId)
     .order("position", { ascending: true });
@@ -172,9 +211,12 @@ async function fillMissingStories(
       missing.push({
         brief_id: briefId,
         position,
+        cluster_id: null,
         headline: "",
         summary: "",
         why_it_matters: null,
+        confidence: null,
+        flags: [] as Json,
         sources: [] as Json,
       });
     }
@@ -226,9 +268,12 @@ async function upsertStories(
   const payload: StoryInsert[] = normalizedStories.map((story) => ({
     brief_id: briefId,
     position: story.position,
+    cluster_id: story.clusterId,
     headline: story.headline,
     summary: story.summary,
     why_it_matters: story.whyItMatters,
+    confidence: story.confidence,
+    flags: story.flags as Json,
     sources: story.sources as Json,
   }));
 
@@ -251,9 +296,12 @@ function mapEditorPayload(brief: BriefRow, stories: StoryRow[]) {
     stories: stories.map((story) => ({
       id: story.id,
       position: story.position,
+      clusterId: story.cluster_id,
       headline: story.headline,
       summary: story.summary,
       whyItMatters: story.why_it_matters,
+      confidence: story.confidence,
+      flags: normalizeFlags(story.flags),
       sources: normalizeSources(story.sources),
     })),
   };
@@ -322,6 +370,25 @@ export async function POST(request: NextRequest) {
   }
 
   const normalizedStories = (body.stories ?? []).map(normalizeStoryInput);
+  const warningStories = normalizedStories
+    .map((story) => {
+      const reasons: string[] = [];
+      if (typeof story.confidence === "number" && story.confidence < 0.5) {
+        reasons.push("low_confidence");
+      }
+
+      if (story.flags.includes("limited_sources")) {
+        reasons.push("limited_sources");
+      }
+
+      if (story.flags.includes("unclear_details")) {
+        reasons.push("unclear_details");
+      }
+
+      return { position: story.position, reasons };
+    })
+    .filter((warning) => warning.reasons.length > 0);
+
   if (action === "publish") {
     const fieldErrors = validatePublishFields(normalizedStories);
     if (Object.keys(fieldErrors).length > 0) {
@@ -329,6 +396,17 @@ export async function POST(request: NextRequest) {
         {
           error: "Fix required fields before publishing.",
           storyErrors: fieldErrors,
+        },
+        { status: 400 },
+      );
+    }
+
+    if (warningStories.length > 0 && !body.publishAnyway) {
+      return NextResponse.json(
+        {
+          error: "Publishing requires confirmation due to low confidence or warning flags.",
+          publishWarningRequired: true,
+          warningStories,
         },
         { status: 400 },
       );

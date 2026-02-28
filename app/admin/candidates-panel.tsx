@@ -161,6 +161,7 @@ export default function CandidatesPanel({
 
     onAssignStory({
       position,
+      clusterId: detail.id,
       headline: detail.label,
       summary: "TODO: write summary",
       sources: detail.topSources,

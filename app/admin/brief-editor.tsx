@@ -18,9 +18,12 @@ type SourceRow = {
 type StoryForm = {
   id?: string;
   position: number;
+  clusterId: string | null;
   headline: string;
   summary: string;
   whyItMatters: string;
+  confidence: number | null;
+  flags: string[];
   sources: SourceRow[];
 };
 
@@ -51,14 +54,46 @@ type EditorBriefResponse = {
     stories: Array<{
       id: string;
       position: number;
+      clusterId: string | null;
       headline: string;
       summary: string;
       whyItMatters: string | null;
+      confidence: number | null;
+      flags: string[];
       sources: Array<{ label: string; url: string }>;
     }>;
   } | null;
   error?: string;
   storyErrors?: StoryErrors;
+  publishWarningRequired?: boolean;
+  warningStories?: Array<{ position: number; reasons: string[] }>;
+};
+
+type DraftedStoryResponse = {
+  story: {
+    id: string;
+    briefId: string;
+    position: number;
+    clusterId: string | null;
+    headline: string;
+    summary: string;
+    whyItMatters: string | null;
+    confidence: number | null;
+    flags: string[];
+  };
+  error?: string;
+};
+
+type DraftedBriefResponse = {
+  briefId: string;
+  statuses: Array<{
+    storyId: string;
+    position: number;
+    ok: boolean;
+    message: string;
+  }>;
+  stories: DraftedStoryResponse["story"][];
+  error?: string;
 };
 
 const POSITIONS = [1, 2, 3, 4, 5] as const;
@@ -87,9 +122,12 @@ function getYesterdayLocalDateInput(): string {
 function createEmptyStory(position: number): StoryForm {
   return {
     position,
+    clusterId: null,
     headline: "",
     summary: "",
     whyItMatters: "",
+    confidence: null,
+    flags: [],
     sources: [],
   };
 }
@@ -110,9 +148,12 @@ function mapBriefPayload(payload: NonNullable<EditorBriefResponse["brief"]>): Br
       payload.stories.map((story) => ({
         id: story.id,
         position: story.position,
+        clusterId: story.clusterId,
         headline: story.headline,
         summary: story.summary,
         whyItMatters: story.whyItMatters ?? "",
+        confidence: story.confidence,
+        flags: story.flags ?? [],
         sources: story.sources.map((source) => ({
           id: makeId(),
           label: source.label,
@@ -147,14 +188,45 @@ function validatePublish(brief: BriefForm): StoryErrors {
 function toRequestStories(stories: StoryForm[]) {
   return normalizeStorySet(stories).map((story) => ({
     position: story.position,
+    clusterId: story.clusterId,
     headline: story.headline,
     summary: story.summary,
     whyItMatters: story.whyItMatters || null,
+    confidence: story.confidence,
+    flags: story.flags,
     sources: story.sources.map((source) => ({
       label: source.label,
       url: source.url,
     })),
   }));
+}
+
+function confidenceLabel(value: number | null): string {
+  if (typeof value !== "number") {
+    return "Unscored";
+  }
+
+  return `Confidence ${value.toFixed(2)}`;
+}
+
+function confidenceClassName(value: number | null): string {
+  if (typeof value !== "number") {
+    return "confidence-badge confidence-unknown";
+  }
+
+  if (value >= 0.75) {
+    return "confidence-badge confidence-good";
+  }
+
+  if (value >= 0.5) {
+    return "confidence-badge confidence-medium";
+  }
+
+  return "confidence-badge confidence-low";
+}
+
+function flagLabel(flag: string): string {
+  return flag.replace(/_/g, " ");
 }
 
 export default function BriefEditor({
@@ -167,8 +239,12 @@ export default function BriefEditor({
   const [brief, setBrief] = useState<BriefForm | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [generatingPositions, setGeneratingPositions] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [storyErrors, setStoryErrors] = useState<StoryErrors>({});
+  const [publishAnyway, setPublishAnyway] = useState(false);
+  const [showPublishWarning, setShowPublishWarning] = useState(false);
 
   const statusLabel = useMemo(() => {
     if (!brief) {
@@ -182,6 +258,31 @@ export default function BriefEditor({
     return "Draft";
   }, [brief]);
 
+  const publishWarnings = useMemo(() => {
+    if (!brief) {
+      return [];
+    }
+
+    return brief.stories
+      .map((story) => {
+        const reasons: string[] = [];
+        if (typeof story.confidence === "number" && story.confidence < 0.5) {
+          reasons.push("low_confidence");
+        }
+
+        if (story.flags.includes("limited_sources")) {
+          reasons.push("limited_sources");
+        }
+
+        if (story.flags.includes("unclear_details")) {
+          reasons.push("unclear_details");
+        }
+
+        return { position: story.position, reasons };
+      })
+      .filter((warning) => warning.reasons.length > 0);
+  }, [brief]);
+
   useEffect(() => {
     if (!assignmentEvent) {
       return;
@@ -193,7 +294,7 @@ export default function BriefEditor({
         return;
       }
 
-      const { position, headline, summary, sources } = assignmentEvent.payload;
+      const { position, clusterId, headline, summary, sources } = assignmentEvent.payload;
 
       setBrief((current) => {
         if (!current) {
@@ -209,8 +310,11 @@ export default function BriefEditor({
 
             return {
               ...story,
+              clusterId,
               headline,
               summary,
+              confidence: null,
+              flags: [],
               sources: sources.map((source) => ({
                 id: makeId(),
                 label: source.label,
@@ -226,6 +330,8 @@ export default function BriefEditor({
         delete next[position];
         return next;
       });
+      setShowPublishWarning(false);
+      setPublishAnyway(false);
       setErrorMessage(null);
     }, 0);
 
@@ -294,13 +400,18 @@ export default function BriefEditor({
     }
 
     setBrief(mapBriefPayload(payload.brief));
+    setShowPublishWarning(false);
+    setPublishAnyway(false);
   }
 
   async function loadBrief() {
     await loadBriefForDate(selectedDate);
   }
 
-  async function runAction(action: "create_draft" | "save_draft" | "publish" | "unpublish") {
+  async function runAction(
+    action: "create_draft" | "save_draft" | "publish" | "unpublish",
+    options?: { publishAnyway?: boolean },
+  ) {
     setIsSaving(true);
     setErrorMessage(null);
     setStoryErrors({});
@@ -315,6 +426,7 @@ export default function BriefEditor({
     const body: Record<string, unknown> = {
       action,
       date: brief?.date ?? selectedDate,
+      publishAnyway: options?.publishAnyway ?? false,
     };
 
     if (action !== "create_draft" && brief) {
@@ -337,6 +449,9 @@ export default function BriefEditor({
     if (!response.ok) {
       setErrorMessage(payload.error ?? "Action failed.");
       setStoryErrors(payload.storyErrors ?? {});
+      if (payload.publishWarningRequired) {
+        setShowPublishWarning(true);
+      }
       return;
     }
 
@@ -344,7 +459,38 @@ export default function BriefEditor({
       setBrief(mapBriefPayload(payload.brief));
       setSelectedDate(payload.brief.date);
       setLoadedDate(payload.brief.date);
+      if (action === "publish") {
+        setShowPublishWarning(false);
+        setPublishAnyway(false);
+      }
     }
+  }
+
+  function applyDraftedStoryUpdate(storyUpdate: DraftedStoryResponse["story"]) {
+    setBrief((current) => {
+      if (!current) {
+        return current;
+      }
+
+      return {
+        ...current,
+        stories: current.stories.map((story) => {
+          if (story.id !== storyUpdate.id) {
+            return story;
+          }
+
+          return {
+            ...story,
+            clusterId: storyUpdate.clusterId,
+            headline: storyUpdate.headline,
+            summary: storyUpdate.summary,
+            whyItMatters: storyUpdate.whyItMatters ?? "",
+            confidence: storyUpdate.confidence,
+            flags: storyUpdate.flags,
+          };
+        }),
+      };
+    });
   }
 
   function updateStory(position: number, changes: Partial<StoryForm>) {
@@ -435,6 +581,115 @@ export default function BriefEditor({
     });
   }
 
+  async function generateAiDraftForStory(story: StoryForm) {
+    if (!brief || !story.id) {
+      return;
+    }
+
+    if (!story.clusterId) {
+      setErrorMessage(`Story ${story.position} has no cluster assigned.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Regenerate Story ${story.position}? This will overwrite headline, summary, and why it matters.`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setErrorMessage("Session expired. Please sign in again.");
+      return;
+    }
+
+    setGeneratingPositions((current) => {
+      const next = new Set(current);
+      next.add(story.position);
+      return next;
+    });
+    setErrorMessage(null);
+
+    const response = await fetch("/api/admin/ai/draft-story", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        briefId: brief.id,
+        storyId: story.id,
+      }),
+    });
+
+    const payload = (await response.json()) as DraftedStoryResponse;
+    setGeneratingPositions((current) => {
+      const next = new Set(current);
+      next.delete(story.position);
+      return next;
+    });
+
+    if (!response.ok) {
+      setErrorMessage(payload.error ?? `Failed to draft Story ${story.position}.`);
+      return;
+    }
+
+    applyDraftedStoryUpdate(payload.story);
+  }
+
+  async function generateAiDraftsForBrief() {
+    if (!brief) {
+      return;
+    }
+
+    const token = await getAccessToken();
+    if (!token) {
+      setErrorMessage("Session expired. Please sign in again.");
+      return;
+    }
+
+    setIsGeneratingAi(true);
+    setErrorMessage(null);
+    setGeneratingPositions(
+      new Set(
+        brief.stories
+          .filter((story) => story.clusterId)
+          .map((story) => story.position),
+      ),
+    );
+
+    const response = await fetch("/api/admin/ai/draft-brief", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ briefId: brief.id }),
+    });
+
+    const payload = (await response.json()) as DraftedBriefResponse;
+    setIsGeneratingAi(false);
+    setGeneratingPositions(new Set());
+
+    if (!response.ok) {
+      setErrorMessage(payload.error ?? "Failed to generate AI drafts.");
+      return;
+    }
+
+    payload.stories.forEach((story) => {
+      applyDraftedStoryUpdate(story);
+    });
+
+    const failedStatuses = payload.statuses.filter((status) => !status.ok);
+    if (failedStatuses.length > 0) {
+      const details = failedStatuses
+        .map((status) => `Story ${status.position}: ${status.message}`)
+        .join(" | ");
+      setErrorMessage(`Some stories were not drafted: ${details}`);
+    }
+  }
+
   function handlePublish() {
     if (!brief) {
       return;
@@ -447,7 +702,15 @@ export default function BriefEditor({
       return;
     }
 
-    void runAction("publish");
+    if (publishWarnings.length > 0 && !publishAnyway) {
+      setShowPublishWarning(true);
+      setErrorMessage(
+        "Publishing requires confirmation because one or more stories are low confidence or flagged.",
+      );
+      return;
+    }
+
+    void runAction("publish", { publishAnyway });
   }
 
   return (
@@ -475,7 +738,7 @@ export default function BriefEditor({
             className="button"
             type="button"
             onClick={() => void runAction("create_draft")}
-            disabled={isSaving}
+            disabled={isSaving || isGeneratingAi}
           >
             Create draft for this date
           </button>
@@ -501,14 +764,54 @@ export default function BriefEditor({
               placeholder="Optional title"
             />
           </label>
+          <button
+            className="button button-muted"
+            type="button"
+            onClick={() => void generateAiDraftsForBrief()}
+            disabled={isGeneratingAi || isSaving}
+          >
+            {isGeneratingAi ? "Generating AI Drafts..." : "Generate AI Drafts"}
+          </button>
 
           <div className="editor-story-grid">
             {brief.stories.map((story) => {
               const fieldErrors = storyErrors[story.position];
+              const isGeneratingStory = generatingPositions.has(story.position);
 
               return (
                 <article className="story-editor-card" key={story.position}>
-                  <h3>Story {story.position}</h3>
+                  <div className="story-header-row">
+                    <h3>Story {story.position}</h3>
+                    <button
+                      className="button button-muted button-small"
+                      type="button"
+                      onClick={() => void generateAiDraftForStory(story)}
+                      disabled={
+                        isSaving ||
+                        isGeneratingAi ||
+                        isGeneratingStory ||
+                        !story.clusterId ||
+                        !story.id
+                      }
+                    >
+                      {isGeneratingStory ? "Regenerating..." : "Regenerate"}
+                    </button>
+                  </div>
+                  <p className="muted">Cluster: {story.clusterId ?? "None assigned"}</p>
+                  <div className="story-ai-meta">
+                    <span className={confidenceClassName(story.confidence)}>
+                      {confidenceLabel(story.confidence)}
+                    </span>
+                    {story.flags.length > 0 ? (
+                      <div className="flag-list">
+                        {story.flags.map((flag) => (
+                          <span className="flag-chip" key={`${story.position}-${flag}`}>
+                            {flagLabel(flag)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                   <label className="field">
                     <span>Headline</span>
                     <input
@@ -598,23 +901,53 @@ export default function BriefEditor({
             })}
           </div>
 
+          {showPublishWarning && publishWarnings.length > 0 ? (
+            <div className="publish-warning">
+              <p className="publish-warning-title">Publish warning</p>
+              <p className="muted">
+                Some stories have low confidence or warning flags. Confirm to publish anyway.
+              </p>
+              <ul className="inline-list">
+                {publishWarnings.map((warning) => (
+                  <li key={`warning-${warning.position}`}>
+                    Story {warning.position}:{" "}
+                    {warning.reasons.map((reason) => flagLabel(reason)).join(", ")}
+                  </li>
+                ))}
+              </ul>
+              <label className="warning-checkbox">
+                <input
+                  type="checkbox"
+                  checked={publishAnyway}
+                  onChange={(event) => setPublishAnyway(event.target.checked)}
+                />
+                <span>Publish anyway</span>
+              </label>
+            </div>
+          ) : null}
+
           <div className="editor-actions">
             <button
               className="button button-muted"
               type="button"
               onClick={() => void runAction("save_draft")}
-              disabled={isSaving}
+              disabled={isSaving || isGeneratingAi}
             >
               {isSaving ? "Saving..." : "Save Draft"}
             </button>
-            <button className="button" type="button" onClick={handlePublish} disabled={isSaving}>
+            <button
+              className="button"
+              type="button"
+              onClick={handlePublish}
+              disabled={isSaving || isGeneratingAi}
+            >
               {isSaving ? "Publishing..." : "Publish"}
             </button>
             <button
               className="button button-muted"
               type="button"
               onClick={() => void runAction("unpublish")}
-              disabled={isSaving}
+              disabled={isSaving || isGeneratingAi}
             >
               Unpublish
             </button>

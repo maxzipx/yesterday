@@ -5,6 +5,7 @@ export type CandidateSource = {
 
 export type CandidateStoryAssignment = {
   position: number;
+  clusterId: string;
   headline: string;
   summary: string;
   sources: CandidateSource[];
