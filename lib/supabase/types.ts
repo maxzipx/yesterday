@@ -79,7 +79,10 @@ export type Database = {
       brief_stories: {
         Row: {
           brief_id: string;
+          cluster_id: string | null;
+          confidence: number | null;
           created_at: string;
+          flags: Json;
           headline: string;
           id: string;
           position: number;
@@ -90,7 +93,10 @@ export type Database = {
         };
         Insert: {
           brief_id: string;
+          cluster_id?: string | null;
+          confidence?: number | null;
           created_at?: string;
+          flags?: Json;
           headline: string;
           id?: string;
           position: number;
@@ -101,7 +107,10 @@ export type Database = {
         };
         Update: {
           brief_id?: string;
+          cluster_id?: string | null;
+          confidence?: number | null;
           created_at?: string;
+          flags?: Json;
           headline?: string;
           id?: string;
           position?: number;
@@ -116,6 +125,13 @@ export type Database = {
             columns: ["brief_id"];
             isOneToOne: false;
             referencedRelation: "daily_briefs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "brief_stories_cluster_id_fkey";
+            columns: ["cluster_id"];
+            isOneToOne: false;
+            referencedRelation: "story_clusters";
             referencedColumns: ["id"];
           },
         ];
