@@ -90,6 +90,7 @@ export default function CandidatesPanel({
   onAssignStory,
 }: CandidatesPanelProps) {
   const [windowDate, setWindowDate] = useState("");
+  const [loadedWindowDate, setLoadedWindowDate] = useState("");
   const [candidates, setCandidates] = useState<CandidateListItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSavingOrder, setIsSavingOrder] = useState(false);
@@ -103,6 +104,9 @@ export default function CandidatesPanel({
   const title = useMemo(
     () => (windowDate ? `Candidates (${windowDate})` : "Candidates"),
     [windowDate],
+  );
+  const dateChangedSinceLoad = Boolean(
+    loadedWindowDate && windowDate && loadedWindowDate !== windowDate,
   );
 
   async function getAccessToken(): Promise<string | null> {
@@ -145,11 +149,13 @@ export default function CandidatesPanel({
     if (!response.ok) {
       setError(payload.error ?? "Failed to load candidates.");
       setCandidates([]);
+      setLoadedWindowDate("");
       setHasOrderChanges(false);
       return;
     }
 
     setCandidates(resequenceRanks(payload.candidates ?? []));
+    setLoadedWindowDate(dateToLoad);
     setHasOrderChanges(false);
   }
 
@@ -162,7 +168,12 @@ export default function CandidatesPanel({
       setError("Window date is required.");
       return;
     }
-    const dateToLoad = windowDate;
+    const dateToLoad = loadedWindowDate || windowDate;
+
+    if (dateChangedSinceLoad) {
+      setError("Window date changed. Click Load before saving candidate order.");
+      return;
+    }
 
     const token = await getAccessToken();
     if (!token) {
@@ -277,7 +288,10 @@ export default function CandidatesPanel({
             className="input"
             type="date"
             value={windowDate}
-            onChange={(event) => setWindowDate(event.target.value)}
+            onChange={(event) => {
+              setWindowDate(event.target.value);
+              setError(null);
+            }}
           />
         </label>
         <button
@@ -292,11 +306,15 @@ export default function CandidatesPanel({
           className="button"
           type="button"
           onClick={() => void saveOrder()}
-          disabled={isSavingOrder || isLoading || !hasOrderChanges}
+          disabled={isSavingOrder || isLoading || !hasOrderChanges || dateChangedSinceLoad}
         >
           {isSavingOrder ? "Saving..." : "Save Order"}
         </button>
       </div>
+
+      {dateChangedSinceLoad ? (
+        <p className="muted">Date changed since candidates were loaded. Click Load, then save order.</p>
+      ) : null}
 
       {error ? <p className="error-text">{error}</p> : null}
 

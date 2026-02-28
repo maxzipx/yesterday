@@ -102,8 +102,11 @@ export async function POST(request: NextRequest) {
     [...topClusterSet].some((clusterId) => !requestedSet.has(clusterId))
   ) {
     return NextResponse.json(
-      { error: "orderedClusterIds must match the current top candidates exactly." },
-      { status: 400 },
+      {
+        error:
+          "Candidates changed since this list was loaded. Click Load to refresh, then try saving order again.",
+      },
+      { status: 409 },
     );
   }
 
@@ -135,4 +138,3 @@ export async function POST(request: NextRequest) {
     orderedClusterIds,
   });
 }
-
