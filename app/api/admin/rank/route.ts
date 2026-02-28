@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const TOP_LIMIT = 30;
+const TOP_LIMIT = 15;
 
 type RankRequestBody = {
   windowDate?: string;

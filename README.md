@@ -60,7 +60,7 @@ Important deployment note:
 - Admin editor supports loading a date, creating drafts, editing 5 stories, saving drafts, publishing, and unpublishing.
 - Admin RSS ingestion supports `Ingest RSS for Yesterday` from enabled `feed_sources`.
 - Admin clustering supports `Cluster Yesterday's Articles` with safe replace mode for that date.
-- Admin ranking supports `Rank Clusters`, updates `story_clusters.score`, and snapshots top 30 in `cluster_candidates`.
+- Admin ranking supports `Rank Clusters`, updates `story_clusters.score`, and snapshots top 15 in `cluster_candidates`.
 - Admin candidates pool shows top 15 ranked clusters, supports drag-and-drop manual ordering, and persists order for `Generate Draft From Top 5`.
 - Admin candidates pool supports viewing cluster members and assigning a cluster to Story #1..#5 in the brief editor.
 - Admin draft generation supports one-click `Generate Draft From Top 5` using ranked candidates.

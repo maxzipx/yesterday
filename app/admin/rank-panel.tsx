@@ -79,7 +79,7 @@ export default function RankPanel({ supabase }: RankPanelProps) {
   return (
     <article className="card">
       <h2>Cluster Ranking</h2>
-      <p className="muted">Scores clusters and snapshots top 30 candidates.</p>
+      <p className="muted">Scores clusters and snapshots top 15 candidates.</p>
       <button className="button" type="button" onClick={runRanking} disabled={isRunning}>
         {isRunning ? "Ranking..." : "Rank Clusters"}
       </button>
