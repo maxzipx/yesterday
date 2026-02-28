@@ -22,13 +22,3 @@ export function getSupabasePublicEnv(): SupabasePublicEnv {
 
   return { url, anonKey };
 }
-
-export function getSupabaseServerEnv(): { url: string; key: string } {
-  const { url, anonKey } = getSupabasePublicEnv();
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  return {
-    url,
-    key: serviceRoleKey ?? anonKey,
-  };
-}

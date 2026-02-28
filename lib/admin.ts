@@ -1,20 +1,20 @@
 import "server-only";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/types";
 
-function parseAdminEmails(): Set<string> {
-  const raw = process.env.ADMIN_EMAILS ?? "";
-  const emails = raw
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
-    .filter((email) => email.length > 0);
+export async function isAdminUser(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("admins")
+    .select("user_id")
+    .eq("user_id", userId)
+    .maybeSingle();
 
-  return new Set(emails);
-}
-
-export function isAdminEmail(email: string | null | undefined): boolean {
-  if (!email) {
-    return false;
+  if (error) {
+    throw new Error(`Failed to verify admin access: ${error.message}`);
   }
 
-  const adminEmails = parseAdminEmails();
-  return adminEmails.has(email.trim().toLowerCase());
+  return Boolean(data?.user_id);
 }

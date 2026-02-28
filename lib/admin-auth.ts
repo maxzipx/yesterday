@@ -1,10 +1,13 @@
 import "server-only";
 import { NextRequest } from "next/server";
-import { isAdminEmail } from "@/lib/admin";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { isAdminUser } from "@/lib/admin";
+import {
+  getSupabaseServerClient,
+  getSupabaseServerClientForToken,
+} from "@/lib/supabase/server";
 
 export type AdminRequestAuth =
-  | { ok: true; email: string }
+  | { ok: true; email: string; userId: string; accessToken: string }
   | { ok: false; status: number; error: string; email?: string };
 
 function getBearerToken(request: NextRequest): string | null {
@@ -32,14 +35,31 @@ export async function requireAdminFromRequest(
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase.auth.getUser(token);
 
-  if (error || !data.user?.email) {
+  if (error || !data.user?.email || !data.user.id) {
     return { ok: false, status: 401, error: error?.message ?? "Invalid session." };
   }
 
   const email = data.user.email.trim().toLowerCase();
-  if (!isAdminEmail(email)) {
-    return { ok: false, status: 403, error: "Not authorized.", email };
+  const userScopedClient = getSupabaseServerClientForToken(token);
+
+  try {
+    const admin = await isAdminUser(userScopedClient, data.user.id);
+    if (!admin) {
+      return { ok: false, status: 403, error: "Not authorized.", email };
+    }
+  } catch (adminError) {
+    return {
+      ok: false,
+      status: 500,
+      error: adminError instanceof Error ? adminError.message : "Admin check failed.",
+      email,
+    };
   }
 
-  return { ok: true, email };
+  return {
+    ok: true,
+    email,
+    userId: data.user.id,
+    accessToken: token,
+  };
 }

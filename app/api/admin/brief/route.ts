@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database, Json } from "@/lib/supabase/types";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -8,6 +9,7 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type BriefRow = Database["public"]["Tables"]["daily_briefs"]["Row"];
 type StoryRow = Database["public"]["Tables"]["brief_stories"]["Row"];
 type StoryInsert = Database["public"]["Tables"]["brief_stories"]["Insert"];
+type ServerClient = SupabaseClient<Database>;
 
 type SourceInput = {
   label: string;
@@ -120,8 +122,10 @@ function validatePublishFields(
   return errors;
 }
 
-async function getBriefByDate(date: string): Promise<BriefRow | null> {
-  const supabase = getSupabaseServerClient();
+async function getBriefByDate(
+  supabase: ServerClient,
+  date: string,
+): Promise<BriefRow | null> {
   const { data, error } = await supabase
     .from("daily_briefs")
     .select("id, brief_date, status, title, published_at, created_at, updated_at")
@@ -135,8 +139,10 @@ async function getBriefByDate(date: string): Promise<BriefRow | null> {
   return (data as BriefRow | null) ?? null;
 }
 
-async function getStoriesForBrief(briefId: string): Promise<StoryRow[]> {
-  const supabase = getSupabaseServerClient();
+async function getStoriesForBrief(
+  supabase: ServerClient,
+  briefId: string,
+): Promise<StoryRow[]> {
   const { data, error } = await supabase
     .from("brief_stories")
     .select(
@@ -152,7 +158,11 @@ async function getStoriesForBrief(briefId: string): Promise<StoryRow[]> {
   return (data ?? []) as StoryRow[];
 }
 
-async function fillMissingStories(briefId: string, existing: StoryRow[]) {
+async function fillMissingStories(
+  supabase: ServerClient,
+  briefId: string,
+  existing: StoryRow[],
+) {
   const positions = new Set(existing.map((story) => story.position));
   const missing: StoryInsert[] = [];
 
@@ -173,7 +183,6 @@ async function fillMissingStories(briefId: string, existing: StoryRow[]) {
     return;
   }
 
-  const supabase = getSupabaseServerClient();
   const { error } = await supabase
     .from("brief_stories")
     .upsert(missing, { onConflict: "brief_id,position" });
@@ -183,8 +192,10 @@ async function fillMissingStories(briefId: string, existing: StoryRow[]) {
   }
 }
 
-async function createDraft(date: string): Promise<BriefRow> {
-  const supabase = getSupabaseServerClient();
+async function createDraft(
+  supabase: ServerClient,
+  date: string,
+): Promise<BriefRow> {
   const { data, error } = await supabase
     .from("daily_briefs")
     .insert({
@@ -201,11 +212,15 @@ async function createDraft(date: string): Promise<BriefRow> {
   }
 
   const brief = data as BriefRow;
-  await fillMissingStories(brief.id, []);
+  await fillMissingStories(supabase, brief.id, []);
   return brief;
 }
 
-async function upsertStories(briefId: string, stories: StoryInput[]) {
+async function upsertStories(
+  supabase: ServerClient,
+  briefId: string,
+  stories: StoryInput[],
+) {
   const normalizedStories = stories.map(normalizeStoryInput);
   const payload: StoryInsert[] = normalizedStories.map((story) => ({
     brief_id: briefId,
@@ -216,7 +231,6 @@ async function upsertStories(briefId: string, stories: StoryInput[]) {
     sources: story.sources as Json,
   }));
 
-  const supabase = getSupabaseServerClient();
   const { error } = await supabase
     .from("brief_stories")
     .upsert(payload, { onConflict: "brief_id,position" });
@@ -249,20 +263,21 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
 
   const date = request.nextUrl.searchParams.get("date")?.trim() ?? "";
   if (!isValidDateInput(date)) {
     return NextResponse.json({ error: "Invalid date format." }, { status: 400 });
   }
 
-  const brief = await getBriefByDate(date);
+  const brief = await getBriefByDate(supabase, date);
   if (!brief) {
     return NextResponse.json({ brief: null });
   }
 
-  const stories = await getStoriesForBrief(brief.id);
-  await fillMissingStories(brief.id, stories);
-  const refreshedStories = await getStoriesForBrief(brief.id);
+  const stories = await getStoriesForBrief(supabase, brief.id);
+  await fillMissingStories(supabase, brief.id, stories);
+  const refreshedStories = await getStoriesForBrief(supabase, brief.id);
 
   return NextResponse.json({
     brief: mapEditorPayload(brief, refreshedStories),
@@ -274,6 +289,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
 
   const body = (await request.json()) as BriefMutationRequest;
   const date = body.date?.trim() ?? "";
@@ -288,14 +304,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (action === "create_draft") {
-    let brief = await getBriefByDate(date);
+    let brief = await getBriefByDate(supabase, date);
     if (!brief) {
-      brief = await createDraft(date);
+      brief = await createDraft(supabase, date);
     }
 
-    const stories = await getStoriesForBrief(brief.id);
-    await fillMissingStories(brief.id, stories);
-    const refreshedStories = await getStoriesForBrief(brief.id);
+    const stories = await getStoriesForBrief(supabase, brief.id);
+    await fillMissingStories(supabase, brief.id, stories);
+    const refreshedStories = await getStoriesForBrief(supabase, brief.id);
     return NextResponse.json({ brief: mapEditorPayload(brief, refreshedStories) });
   }
 
@@ -319,7 +335,7 @@ export async function POST(request: NextRequest) {
   }
 
   const title = body.title?.trim() || null;
-  let brief = await getBriefByDate(date);
+  let brief = await getBriefByDate(supabase, date);
 
   const existingPublishedAt = brief?.published_at ?? null;
   let nextStatus: BriefRow["status"] = "draft";
@@ -335,8 +351,6 @@ export async function POST(request: NextRequest) {
     nextStatus = "draft";
     nextPublishedAt = null;
   }
-
-  const supabase = getSupabaseServerClient();
 
   if (!brief) {
     const { data, error } = await supabase
@@ -380,10 +394,10 @@ export async function POST(request: NextRequest) {
     brief = data as BriefRow;
   }
 
-  await upsertStories(brief.id, body.stories ?? []);
-  const savedStories = await getStoriesForBrief(brief.id);
-  await fillMissingStories(brief.id, savedStories);
-  const refreshedStories = await getStoriesForBrief(brief.id);
+  await upsertStories(supabase, brief.id, body.stories ?? []);
+  const savedStories = await getStoriesForBrief(supabase, brief.id);
+  await fillMissingStories(supabase, brief.id, savedStories);
+  const refreshedStories = await getStoriesForBrief(supabase, brief.id);
 
   return NextResponse.json({
     brief: mapEditorPayload(brief, refreshedStories),

@@ -16,9 +16,6 @@ Copy `.env.example` to `.env.local` and set:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-# Optional for server-only privileged access:
-# SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-ADMIN_EMAILS=admin1@example.com,admin2@example.com
 ```
 
 Public pages read directly from Supabase on the server. Configure the variables above before running the app.
@@ -26,8 +23,8 @@ Public pages read directly from Supabase on the server. Configure the variables 
 ## Admin Access
 
 - `/admin` uses Supabase Auth email/password sign-in.
-- Authorization is checked server-side against `ADMIN_EMAILS`.
-- Logged-in users not in `ADMIN_EMAILS` see `Not authorized`.
+- Authorization is checked server-side against `public.admins(user_id)`.
+- Logged-in users not in `public.admins` see `Not authorized`.
 - Admin editor supports loading a date, creating drafts, editing 5 stories, saving drafts, publishing, and unpublishing.
 
 ## Supabase Setup
@@ -40,6 +37,18 @@ It creates:
 - indexes for latest published brief lookups and ordered story retrieval
 - `updated_at` triggers
 - a seed row for one published brief with 5 stories
+
+Then run [supabase/rls.sql](./supabase/rls.sql) to enable RLS policies and create the `admins` allowlist table.
+
+After your first sign-in, add your account as admin:
+
+```sql
+select id, email from auth.users order by created_at desc;
+
+insert into public.admins (user_id)
+values ('YOUR_USER_UUID_HERE')
+on conflict (user_id) do nothing;
+```
 
 ## Local Development
 
