@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { revalidatePath } from "next/cache";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database, Json } from "@/lib/supabase/types";
@@ -398,6 +399,12 @@ export async function POST(request: NextRequest) {
   const savedStories = await getStoriesForBrief(supabase, brief.id);
   await fillMissingStories(supabase, brief.id, savedStories);
   const refreshedStories = await getStoriesForBrief(supabase, brief.id);
+
+  if (action === "publish" || action === "unpublish") {
+    revalidatePath("/brief");
+    revalidatePath("/archive");
+    revalidatePath(`/brief/${date}`);
+  }
 
   return NextResponse.json({
     brief: mapEditorPayload(brief, refreshedStories),

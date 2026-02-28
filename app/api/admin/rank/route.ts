@@ -265,14 +265,22 @@ export async function rankClustersForWindowDate(
     bounds.end,
   );
 
-  for (const cluster of ranked) {
-    const { error } = await supabase
-      .from("story_clusters")
-      .update({ score: cluster.score, label: cluster.label })
-      .eq("id", cluster.clusterId);
+  if (ranked.length > 0) {
+    const updates: Database["public"]["Tables"]["story_clusters"]["Insert"][] = ranked.map(
+      (cluster) => ({
+        id: cluster.clusterId,
+        window_date: windowDate,
+        label: cluster.label,
+        score: cluster.score,
+      }),
+    );
 
-    if (error) {
-      throw new Error(`Failed to update cluster score: ${error.message}`);
+    const { error: updateError } = await supabase
+      .from("story_clusters")
+      .upsert(updates, { onConflict: "id" });
+
+    if (updateError) {
+      throw new Error(`Failed to update cluster scores: ${updateError.message}`);
     }
   }
 

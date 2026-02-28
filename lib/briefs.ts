@@ -1,4 +1,5 @@
 import type { Database, Json } from "@/lib/supabase/types";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { getSupabaseServerClient } from "@/lib/supabase/server";
 
 export type BriefSource = {
@@ -72,6 +73,10 @@ function mapStoryRow(row: StoryRow): BriefStory {
 }
 
 async function fetchStoriesForBrief(briefId: string): Promise<BriefStory[]> {
+  if (!isSupabaseConfigured()) {
+    return [];
+  }
+
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("brief_stories")
@@ -88,6 +93,10 @@ async function fetchStoriesForBrief(briefId: string): Promise<BriefStory[]> {
 }
 
 export async function getPublishedBriefs(): Promise<BriefRecord[]> {
+  if (!isSupabaseConfigured()) {
+    return [];
+  }
+
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("daily_briefs")
@@ -103,6 +112,10 @@ export async function getPublishedBriefs(): Promise<BriefRecord[]> {
 }
 
 export async function getLatestPublishedBrief(): Promise<BriefWithStories | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("daily_briefs")
@@ -131,6 +144,10 @@ export async function getLatestPublishedBrief(): Promise<BriefWithStories | null
 export async function getPublishedBriefByDate(
   date: string,
 ): Promise<BriefWithStories | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
   const supabase = getSupabaseServerClient();
   const { data, error } = await supabase
     .from("daily_briefs")

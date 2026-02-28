@@ -103,6 +103,22 @@ export async function generateDraftFromTopClusters(
   supabase: SupabaseClient<Database>,
   windowDate: string,
 ): Promise<GenerateDraftResult> {
+  const { data: existingBriefData, error: existingBriefError } = await supabase
+    .from("daily_briefs")
+    .select("id, status, published_at")
+    .eq("brief_date", windowDate)
+    .maybeSingle();
+
+  if (existingBriefError) {
+    throw new Error(`Failed to check existing brief status: ${existingBriefError.message}`);
+  }
+
+  if (existingBriefData?.status === "published") {
+    throw new Error(
+      "A published brief already exists for this date. Unpublish it first or choose another date.",
+    );
+  }
+
   const { data: candidateData, error: candidateError } = await supabase
     .from("cluster_candidates")
     .select("id, window_date, cluster_id, rank, created_at")
