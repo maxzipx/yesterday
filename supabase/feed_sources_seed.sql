@@ -11,8 +11,11 @@ values
   ('TechCrunch', 'https://techcrunch.com/feed/', true),
   ('ScienceDaily - Top Science', 'https://www.sciencedaily.com/rss/top/science.xml', true),
   ('Nature - News', 'https://www.nature.com/nature.rss', true),
-  ('Politico - Picks', 'https://www.politico.com/rss/politicopicks.xml', true)
+  ('Politico - Picks', 'https://www.politico.com/rss/politicopicks.xml', true),
+  ('Al Jazeera - All News', 'https://www.aljazeera.com/xml/rss/all.xml', true),
+  ('CBS News - Latest', 'https://www.cbsnews.com/latest/rss/main', true)
 on conflict (url) do update
 set
   name = excluded.name,
   is_enabled = excluded.is_enabled;
+
