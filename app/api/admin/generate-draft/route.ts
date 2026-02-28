@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
@@ -25,6 +26,12 @@ type ArticleRow = Pick<
 >;
 type SourceRow = Pick<Database["public"]["Tables"]["feed_sources"]["Row"], "id" | "name">;
 
+export type GenerateDraftResult = {
+  windowDate: string;
+  briefId: string;
+  editorLink: string;
+};
+
 function formatDateInput(date: Date): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -32,7 +39,7 @@ function formatDateInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getYesterdayUtcDateInput(): string {
+export function getYesterdayUtcDateInput(): string {
   const now = new Date();
   const yesterdayUtc = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
@@ -92,24 +99,10 @@ function buildStorySources(
   return [...uniqueByUrl.values()].slice(0, 4);
 }
 
-export async function POST(request: NextRequest) {
-  const auth = await requireAdminFromRequest(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as GenerateDraftRequestBody;
-  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
-
-  if (!DATE_PATTERN.test(windowDate)) {
-    return NextResponse.json(
-      { error: "windowDate must be in YYYY-MM-DD format." },
-      { status: 400 },
-    );
-  }
-
-  const supabase = getSupabaseServerClientForToken(auth.accessToken);
-
+export async function generateDraftFromTopClusters(
+  supabase: SupabaseClient<Database>,
+  windowDate: string,
+): Promise<GenerateDraftResult> {
   const { data: candidateData, error: candidateError } = await supabase
     .from("cluster_candidates")
     .select("id, window_date, cluster_id, rank, created_at")
@@ -118,20 +111,13 @@ export async function POST(request: NextRequest) {
     .limit(REQUIRED_STORY_COUNT);
 
   if (candidateError) {
-    return NextResponse.json(
-      { error: `Failed to load ranked candidates: ${candidateError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load ranked candidates: ${candidateError.message}`);
   }
 
   const candidates = (candidateData ?? []) as CandidateRow[];
   if (candidates.length < REQUIRED_STORY_COUNT) {
-    return NextResponse.json(
-      {
-        error:
-          "Not enough ranked clusters for this date. Run ingest -> cluster -> rank first.",
-      },
-      { status: 400 },
+    throw new Error(
+      "Not enough ranked clusters for this date. Run ingest -> cluster -> rank first.",
     );
   }
 
@@ -143,10 +129,7 @@ export async function POST(request: NextRequest) {
     .in("id", clusterIds);
 
   if (clusterError) {
-    return NextResponse.json(
-      { error: `Failed to load story clusters: ${clusterError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load story clusters: ${clusterError.message}`);
   }
 
   const clusters = (clusterData ?? []) as ClusterRow[];
@@ -158,10 +141,7 @@ export async function POST(request: NextRequest) {
     .in("cluster_id", clusterIds);
 
   if (membershipError) {
-    return NextResponse.json(
-      { error: `Failed to load cluster memberships: ${membershipError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load cluster memberships: ${membershipError.message}`);
   }
 
   const memberships = (membershipData ?? []) as MembershipRow[];
@@ -175,10 +155,7 @@ export async function POST(request: NextRequest) {
     : { data: [], error: null };
 
   if (articleError) {
-    return NextResponse.json(
-      { error: `Failed to load cluster article details: ${articleError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load cluster article details: ${articleError.message}`);
   }
 
   const articles = (articleData ?? []) as ArticleRow[];
@@ -195,10 +172,7 @@ export async function POST(request: NextRequest) {
     : { data: [], error: null };
 
   if (sourceError) {
-    return NextResponse.json(
-      { error: `Failed to load source names: ${sourceError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load source names: ${sourceError.message}`);
   }
 
   const sources = (sourceData ?? []) as SourceRow[];
@@ -211,7 +185,9 @@ export async function POST(request: NextRequest) {
     membershipsByCluster.set(membership.cluster_id, rows);
   }
 
-  const topCandidates = [...candidates].sort((a, b) => a.rank - b.rank).slice(0, REQUIRED_STORY_COUNT);
+  const topCandidates = [...candidates]
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, REQUIRED_STORY_COUNT);
   const storyRows: Database["public"]["Tables"]["brief_stories"]["Insert"][] = [];
 
   for (let index = 0; index < topCandidates.length; index += 1) {
@@ -251,9 +227,8 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (briefError || !briefData?.id) {
-    return NextResponse.json(
-      { error: `Failed to create or update draft brief: ${briefError?.message ?? "Unknown error"}` },
-      { status: 500 },
+    throw new Error(
+      `Failed to create or update draft brief: ${briefError?.message ?? "Unknown error"}`,
     );
   }
 
@@ -268,15 +243,41 @@ export async function POST(request: NextRequest) {
     .upsert(upsertStories, { onConflict: "brief_id,position" });
 
   if (storyError) {
-    return NextResponse.json(
-      { error: `Failed to upsert generated brief stories: ${storyError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to upsert generated brief stories: ${storyError.message}`);
   }
 
-  return NextResponse.json({
+  return {
     windowDate,
     briefId,
     editorLink: `/admin#brief-editor`,
-  });
+  };
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminFromRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as GenerateDraftRequestBody;
+  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
+
+  if (!DATE_PATTERN.test(windowDate)) {
+    return NextResponse.json(
+      { error: "windowDate must be in YYYY-MM-DD format." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+
+  try {
+    const result = await generateDraftFromTopClusters(supabase, windowDate);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Generate draft failed." },
+      { status: 500 },
+    );
+  }
 }

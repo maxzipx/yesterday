@@ -1,5 +1,6 @@
 import Parser from "rss-parser";
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database, Json } from "@/lib/supabase/types";
@@ -38,14 +39,25 @@ type IngestRequestBody = {
   windowDate?: string;
 };
 
-function formatDateInput(date: Date): string {
+export type IngestRssResult = {
+  windowDate: string;
+  feedsProcessed: number;
+  feedsFailed: number;
+  itemsFetched: number;
+  newArticlesInserted: number;
+  duplicatesSkipped: number;
+  invalidItemsSkipped: number;
+  failures: Array<{ feed: string; error: string }>;
+};
+
+export function formatDateInput(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-function getYesterdayDateInput(): string {
+export function getYesterdayDateInput(): string {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   return formatDateInput(yesterday);
@@ -139,24 +151,10 @@ async function fetchFeedXml(url: string): Promise<string> {
   }
 }
 
-export async function POST(request: NextRequest) {
-  const auth = await requireAdminFromRequest(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as IngestRequestBody;
-  const windowDate = body.windowDate?.trim() || getYesterdayDateInput();
-
-  if (!DATE_PATTERN.test(windowDate)) {
-    return NextResponse.json(
-      { error: "windowDate must be in YYYY-MM-DD format." },
-      { status: 400 },
-    );
-  }
-
-  const supabase = getSupabaseServerClientForToken(auth.accessToken);
-
+export async function ingestRssForWindowDate(
+  supabase: SupabaseClient<Database>,
+  windowDate: string,
+): Promise<IngestRssResult> {
   const { data: feedSources, error: feedError } = await supabase
     .from("feed_sources")
     .select("id, name, url, is_enabled, created_at")
@@ -164,10 +162,7 @@ export async function POST(request: NextRequest) {
     .order("created_at", { ascending: true });
 
   if (feedError) {
-    return NextResponse.json(
-      { error: `Failed to load feed sources: ${feedError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load feed sources: ${feedError.message}`);
   }
 
   const enabledFeeds = (feedSources ?? []) as FeedSourceRow[];
@@ -265,7 +260,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({
+  return {
     windowDate,
     feedsProcessed: enabledFeeds.length,
     feedsFailed,
@@ -274,5 +269,33 @@ export async function POST(request: NextRequest) {
     duplicatesSkipped,
     invalidItemsSkipped,
     failures: feedFailures,
-  });
+  };
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminFromRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as IngestRequestBody;
+  const windowDate = body.windowDate?.trim() || getYesterdayDateInput();
+
+  if (!DATE_PATTERN.test(windowDate)) {
+    return NextResponse.json(
+      { error: "windowDate must be in YYYY-MM-DD format." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+  try {
+    const result = await ingestRssForWindowDate(supabase, windowDate);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "RSS ingest failed." },
+      { status: 500 },
+    );
+  }
 }

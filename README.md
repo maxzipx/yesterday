@@ -16,6 +16,8 @@ Copy `.env.example` to `.env.local` and set:
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+CRON_SECRET=a_long_random_secret
 ```
 
 Public pages and admin APIs use Supabase with RLS. Configure the variables above before running the app.
@@ -75,6 +77,8 @@ on conflict (user_id) do nothing;
 2. Add environment variables in Vercel Project Settings:
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `CRON_SECRET`
 3. Run SQL in Supabase SQL editor:
    - [supabase/setup.sql](./supabase/setup.sql)
    - [supabase/rls.sql](./supabase/rls.sql)
@@ -84,6 +88,25 @@ on conflict (user_id) do nothing;
 Health check endpoints after deploy:
 - `/health` (human-readable page)
 - `/api/health` (JSON status)
+
+## Nightly Cron
+
+- Endpoint: `POST /api/cron/nightly`
+- Auth: `Authorization: Bearer <CRON_SECRET>` or `x-cron-secret: <CRON_SECRET>`
+- Default behavior: runs pipeline for yesterday (UTC):
+  1. RSS ingest
+  2. clustering
+  3. ranking
+  4. draft generation (does not publish)
+
+Manual test example:
+
+```bash
+curl -X POST "https://YOUR_DOMAIN/api/cron/nightly" \
+  -H "Authorization: Bearer YOUR_CRON_SECRET"
+```
+
+Vercel cron schedule is configured in [vercel.json](./vercel.json) to call `/api/cron/nightly` daily at `09:00 UTC`.
 
 ## Post-Deploy QA Checklist
 

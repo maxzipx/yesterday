@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
@@ -40,6 +41,21 @@ type RankedCluster = {
   topPublishers: Array<{ name: string; count: number }>;
 };
 
+export type RankResult = {
+  windowDate: string;
+  clustersConsidered: number;
+  candidatesSaved: number;
+  top: Array<{
+    rank: number;
+    label: string;
+    score: number;
+    volume: number;
+    breadth: number;
+    recency: number;
+    topPublishers: Array<{ name: string; count: number }>;
+  }>;
+};
+
 function formatDateInput(date: Date): string {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
@@ -47,7 +63,7 @@ function formatDateInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getYesterdayUtcDateInput(): string {
+export function getYesterdayUtcDateInput(): string {
   const now = new Date();
   const yesterdayUtc = new Date(
     Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
@@ -159,23 +175,10 @@ function rankClusters(
   return ranked;
 }
 
-export async function POST(request: NextRequest) {
-  const auth = await requireAdminFromRequest(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as RankRequestBody;
-  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
-
-  if (!DATE_PATTERN.test(windowDate)) {
-    return NextResponse.json(
-      { error: "windowDate must be in YYYY-MM-DD format." },
-      { status: 400 },
-    );
-  }
-
-  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+export async function rankClustersForWindowDate(
+  supabase: SupabaseClient<Database>,
+  windowDate: string,
+): Promise<RankResult> {
   const bounds = toWindowBoundsUtc(windowDate);
 
   const { data: clustersData, error: clustersError } = await supabase
@@ -184,22 +187,19 @@ export async function POST(request: NextRequest) {
     .eq("window_date", windowDate);
 
   if (clustersError) {
-    return NextResponse.json(
-      { error: `Failed to load clusters: ${clustersError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load clusters: ${clustersError.message}`);
   }
 
   const clusters = (clustersData ?? []) as ClusterRow[];
   if (clusters.length === 0) {
     await supabase.from("cluster_candidates").delete().eq("window_date", windowDate);
 
-    return NextResponse.json({
+    return {
       windowDate,
       clustersConsidered: 0,
       candidatesSaved: 0,
       top: [],
-    });
+    };
   }
 
   const clusterIds = clusters.map((cluster) => cluster.id);
@@ -210,10 +210,7 @@ export async function POST(request: NextRequest) {
     .in("cluster_id", clusterIds);
 
   if (membershipsError) {
-    return NextResponse.json(
-      { error: `Failed to load cluster memberships: ${membershipsError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load cluster memberships: ${membershipsError.message}`);
   }
 
   const memberships = (membershipsData ?? []) as ClusterMembershipRow[];
@@ -229,10 +226,7 @@ export async function POST(request: NextRequest) {
       .lt("published_at", bounds.end);
 
     if (articlesError) {
-      return NextResponse.json(
-        { error: `Failed to load cluster articles: ${articlesError.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to load cluster articles: ${articlesError.message}`);
     }
 
     for (const article of (articlesData ?? []) as ArticleRow[]) {
@@ -254,10 +248,7 @@ export async function POST(request: NextRequest) {
       .in("id", sourceIds);
 
     if (sourcesError) {
-      return NextResponse.json(
-        { error: `Failed to load feed sources: ${sourcesError.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to load feed sources: ${sourcesError.message}`);
     }
 
     for (const source of (sourcesData ?? []) as FeedSourceRow[]) {
@@ -281,10 +272,7 @@ export async function POST(request: NextRequest) {
       .eq("id", cluster.clusterId);
 
     if (error) {
-      return NextResponse.json(
-        { error: `Failed to update cluster score: ${error.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to update cluster score: ${error.message}`);
     }
   }
 
@@ -296,10 +284,7 @@ export async function POST(request: NextRequest) {
     .eq("window_date", windowDate);
 
   if (clearCandidatesError) {
-    return NextResponse.json(
-      { error: `Failed to clear prior candidates: ${clearCandidatesError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to clear prior candidates: ${clearCandidatesError.message}`);
   }
 
   if (top.length > 0) {
@@ -315,14 +300,11 @@ export async function POST(request: NextRequest) {
       .insert(candidateRows);
 
     if (insertCandidatesError) {
-      return NextResponse.json(
-        { error: `Failed to save ranked candidates: ${insertCandidatesError.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to save ranked candidates: ${insertCandidatesError.message}`);
     }
   }
 
-  return NextResponse.json({
+  return {
     windowDate,
     clustersConsidered: ranked.length,
     candidatesSaved: top.length,
@@ -335,5 +317,34 @@ export async function POST(request: NextRequest) {
       recency: cluster.recency,
       topPublishers: cluster.topPublishers,
     })),
-  });
+  };
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminFromRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as RankRequestBody;
+  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
+
+  if (!DATE_PATTERN.test(windowDate)) {
+    return NextResponse.json(
+      { error: "windowDate must be in YYYY-MM-DD format." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+
+  try {
+    const result = await rankClustersForWindowDate(supabase, windowDate);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Rank failed." },
+      { status: 500 },
+    );
+  }
 }

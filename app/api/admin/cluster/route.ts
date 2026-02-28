@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
@@ -20,6 +21,16 @@ type ClusterArticleInsert = Database["public"]["Tables"]["cluster_articles"]["In
 type ClusterRequestBody = {
   windowDate?: string;
   replace?: boolean;
+};
+
+export type ClusterResult = {
+  windowDate: string;
+  replace: boolean;
+  replacedClusters: number;
+  articlesConsidered: number;
+  clustersCreated: number;
+  avgClusterSize: number;
+  largestClusters: Array<{ label: string; size: number }>;
 };
 
 type TokenVector = Map<string, number>;
@@ -44,7 +55,7 @@ function formatDateInput(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function getYesterdayUtcDateInput(): string {
+export function getYesterdayUtcDateInput(): string {
   const now = new Date();
   const yesterdayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1));
   return formatDateInput(yesterdayUtc);
@@ -178,24 +189,11 @@ function toWindowBoundsUtc(windowDate: string): { start: string; end: string } {
   };
 }
 
-export async function POST(request: NextRequest) {
-  const auth = await requireAdminFromRequest(request);
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: auth.status });
-  }
-
-  const body = (await request.json().catch(() => ({}))) as ClusterRequestBody;
-  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
-  const replace = body.replace ?? true;
-
-  if (!DATE_PATTERN.test(windowDate)) {
-    return NextResponse.json(
-      { error: "windowDate must be in YYYY-MM-DD format." },
-      { status: 400 },
-    );
-  }
-
-  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+export async function clusterArticlesForWindowDate(
+  supabase: SupabaseClient<Database>,
+  windowDate: string,
+  replace = true,
+): Promise<ClusterResult> {
   const bounds = toWindowBoundsUtc(windowDate);
 
   let replacedClusterCount = 0;
@@ -206,10 +204,7 @@ export async function POST(request: NextRequest) {
       .eq("window_date", windowDate);
 
     if (previousError) {
-      return NextResponse.json(
-        { error: `Failed to load previous clusters: ${previousError.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to load previous clusters: ${previousError.message}`);
     }
 
     replacedClusterCount = (previousClusters ?? []).length;
@@ -220,10 +215,7 @@ export async function POST(request: NextRequest) {
       .eq("window_date", windowDate);
 
     if (deleteError) {
-      return NextResponse.json(
-        { error: `Failed to clear previous clusters: ${deleteError.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to clear previous clusters: ${deleteError.message}`);
     }
   }
 
@@ -235,10 +227,7 @@ export async function POST(request: NextRequest) {
     .order("published_at", { ascending: false });
 
   if (articlesError) {
-    return NextResponse.json(
-      { error: `Failed to load articles for clustering: ${articlesError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to load articles for clustering: ${articlesError.message}`);
   }
 
   const articles = ((articleRows ?? []) as ArticleRow[]).map((article) => {
@@ -254,7 +243,7 @@ export async function POST(request: NextRequest) {
   });
 
   if (articles.length === 0) {
-    return NextResponse.json({
+    return {
       windowDate,
       replace,
       replacedClusters: replacedClusterCount,
@@ -262,7 +251,7 @@ export async function POST(request: NextRequest) {
       clustersCreated: 0,
       avgClusterSize: 0,
       largestClusters: [],
-    });
+    };
   }
 
   const workingClusters = buildWorkingClusters(articles);
@@ -280,10 +269,7 @@ export async function POST(request: NextRequest) {
     .select("id, label, score");
 
   if (insertClustersError) {
-    return NextResponse.json(
-      { error: `Failed to insert clusters: ${insertClustersError.message}` },
-      { status: 500 },
-    );
+    throw new Error(`Failed to insert clusters: ${insertClustersError.message}`);
   }
 
   const createdClusters = insertedClusters ?? [];
@@ -309,10 +295,7 @@ export async function POST(request: NextRequest) {
       .insert(membershipRows);
 
     if (membershipError) {
-      return NextResponse.json(
-        { error: `Failed to insert cluster memberships: ${membershipError.message}` },
-        { status: 500 },
-      );
+      throw new Error(`Failed to insert cluster memberships: ${membershipError.message}`);
     }
   }
 
@@ -323,7 +306,7 @@ export async function POST(request: NextRequest) {
 
   clusterSizes.sort((a, b) => b.size - a.size);
 
-  return NextResponse.json({
+  return {
     windowDate,
     replace,
     replacedClusters: replacedClusterCount,
@@ -331,5 +314,35 @@ export async function POST(request: NextRequest) {
     clustersCreated: workingClusters.length,
     avgClusterSize: Number((articles.length / workingClusters.length).toFixed(2)),
     largestClusters: clusterSizes.slice(0, 5),
-  });
+  };
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminFromRequest(request);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as ClusterRequestBody;
+  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
+  const replace = body.replace ?? true;
+
+  if (!DATE_PATTERN.test(windowDate)) {
+    return NextResponse.json(
+      { error: "windowDate must be in YYYY-MM-DD format." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServerClientForToken(auth.accessToken);
+
+  try {
+    const result = await clusterArticlesForWindowDate(supabase, windowDate, replace);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Cluster generation failed." },
+      { status: 500 },
+    );
+  }
 }
