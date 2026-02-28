@@ -41,6 +41,10 @@ It creates:
 
 Then run [supabase/rls.sql](./supabase/rls.sql) to enable RLS policies and create the `admins` allowlist table.
 
+For Week 2 candidate pipeline schema (ingestion + clustering), run:
+
+- [supabase/week2_pipeline.sql](./supabase/week2_pipeline.sql)
+
 After your first sign-in, add your account as admin:
 
 ```sql
