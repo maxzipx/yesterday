@@ -13,6 +13,7 @@ import DateTimePicker from "@react-native-community/datetimepicker";
 import * as Localization from "expo-localization";
 import type { Session } from "@supabase/supabase-js";
 import { dateToTimeString, timeStringToDate } from "../lib/date";
+import { registerForPushTokenAsync } from "../lib/push-token";
 import { loadPushPrefs, savePushPrefs } from "../lib/push-prefs";
 import { supabase } from "../lib/supabase";
 import { appStyles } from "../styles";
@@ -49,6 +50,8 @@ export function SettingsScreen({ session, isSessionLoading }: SettingsScreenProp
   const [prefsMessage, setPrefsMessage] = useState<string | null>(null);
   const [prefsError, setPrefsError] = useState<string | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
+  const [registeringToken, setRegisteringToken] = useState(false);
 
   const loadPrefs = useCallback(async () => {
     if (!session?.user.id) {
@@ -66,11 +69,13 @@ export function SettingsScreen({ session, isSessionLoading }: SettingsScreenProp
         setNotifyTime("08:00");
         setTimezone(defaultTimezone);
         setLastSavedAt(null);
+        setExpoPushToken(null);
       } else {
         setNotifyEnabled(prefs.notificationsEnabled);
         setNotifyTime(prefs.notifyTimeLocal);
         setTimezone(prefs.timezone || defaultTimezone);
         setLastSavedAt(prefs.updatedAt);
+        setExpoPushToken(prefs.expoPushToken);
       }
     } catch (error) {
       setPrefsError(
@@ -164,11 +169,13 @@ export function SettingsScreen({ session, isSessionLoading }: SettingsScreenProp
         notificationsEnabled: notifyEnabled,
         notifyTimeLocal: notifyTime,
         timezone,
+        expoPushToken,
       });
       setNotifyEnabled(saved.notificationsEnabled);
       setNotifyTime(saved.notifyTimeLocal);
       setTimezone(saved.timezone);
       setLastSavedAt(saved.updatedAt);
+      setExpoPushToken(saved.expoPushToken);
       setPrefsMessage("Notification settings saved.");
     } catch (error) {
       setPrefsError(error instanceof Error ? error.message : "Unable to save notification settings.");
@@ -178,6 +185,41 @@ export function SettingsScreen({ session, isSessionLoading }: SettingsScreenProp
   }
 
   const timeValue = useMemo(() => timeStringToDate(notifyTime), [notifyTime]);
+
+  async function registerPushToken() {
+    if (!session?.user.id) {
+      return;
+    }
+
+    setRegisteringToken(true);
+    setPrefsError(null);
+    setPrefsMessage(null);
+
+    const registration = await registerForPushTokenAsync();
+    if (!registration.ok) {
+      setRegisteringToken(false);
+      setPrefsError(registration.error);
+      return;
+    }
+
+    setExpoPushToken(registration.expoPushToken);
+
+    try {
+      const saved = await savePushPrefs({
+        userId: session.user.id,
+        notificationsEnabled: notifyEnabled,
+        notifyTimeLocal: notifyTime,
+        timezone,
+        expoPushToken: registration.expoPushToken,
+      });
+      setLastSavedAt(saved.updatedAt);
+      setPrefsMessage("Push token registered and settings saved.");
+    } catch (error) {
+      setPrefsError(error instanceof Error ? error.message : "Failed to save push token.");
+    } finally {
+      setRegisteringToken(false);
+    }
+  }
 
   return (
     <ScrollView style={appStyles.screen} contentContainerStyle={appStyles.content}>
@@ -268,6 +310,20 @@ export function SettingsScreen({ session, isSessionLoading }: SettingsScreenProp
               placeholder="America/New_York"
               placeholderTextColor="#94a3b8"
             />
+
+            <Text style={appStyles.label}>Expo push token</Text>
+            <Text style={appStyles.mutedText}>
+              {expoPushToken ? expoPushToken : "Not registered yet."}
+            </Text>
+            <Pressable
+              style={[appStyles.button, appStyles.buttonMuted]}
+              disabled={registeringToken || prefsSaving}
+              onPress={() => void registerPushToken()}
+            >
+              <Text style={[appStyles.buttonText, appStyles.buttonMutedText]}>
+                {registeringToken ? "Registering..." : "Register Push Token"}
+              </Text>
+            </Pressable>
 
             <Pressable style={appStyles.button} disabled={prefsSaving} onPress={() => void savePrefs()}>
               <Text style={appStyles.buttonText}>{prefsSaving ? "Saving..." : "Save Notification Settings"}</Text>

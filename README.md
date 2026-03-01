@@ -183,6 +183,7 @@ Mobile env setup (`apps/mobile/.env.local`):
 ```bash
 EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
 EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXPO_PUBLIC_EAS_PROJECT_ID=your_eas_project_id_optional_but_recommended
 ```
 
 Run mobile app:
@@ -211,6 +212,7 @@ Current status:
   - account creation
   - sign out
   - notification preference editor and save flow
+  - Expo push token registration and persistence to `user_push_prefs.expo_push_token`
 - Requires running SQL migration:
   - [supabase/week4_mobile_push.sql](./supabase/week4_mobile_push.sql)
 
@@ -245,6 +247,35 @@ Deliverables:
   - sends via Expo Push API
   - updates `last_sent_for_date`
 - Handles timezone and DST via stored IANA timezone.
+
+Current status:
+- Implemented edge function:
+  - [supabase/functions/send-daily-brief/index.ts](./supabase/functions/send-daily-brief/index.ts)
+- Function behavior:
+  - validates `CRON_SECRET` (`x-cron-secret` or bearer token)
+  - loads latest published brief
+  - matches due users by local timezone + preferred minute
+  - sends via Expo Push API
+  - updates `last_sent_for_date` to avoid duplicates
+  - clears invalid tokens (`DeviceNotRegistered`)
+
+Deploy function (Supabase CLI):
+
+```bash
+supabase functions deploy send-daily-brief
+supabase secrets set CRON_SECRET=your_secret_value
+```
+
+Manual test:
+
+```bash
+curl -X GET "https://YOUR_PROJECT_REF.supabase.co/functions/v1/send-daily-brief?dryRun=true" \
+  -H "x-cron-secret: YOUR_CRON_SECRET"
+```
+
+Scheduling:
+- In Supabase Dashboard, schedule the function every 5 minutes.
+- Keep the same `CRON_SECRET` header in scheduled invocation.
 
 Why this approach:
 - Server-controlled timing and reliability.
