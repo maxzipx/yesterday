@@ -93,6 +93,8 @@ Then run [supabase/rls.sql](./supabase/rls.sql) to enable RLS policies and creat
 For Week 2 candidate pipeline schema (ingestion + clustering), run:
 
 - [supabase/week2_pipeline.sql](./supabase/week2_pipeline.sql)
+- [supabase/week3_ai.sql](./supabase/week3_ai.sql)
+- [supabase/week4_mobile_push.sql](./supabase/week4_mobile_push.sql)
 
 Add feed source rows before running ingestion:
 
@@ -133,7 +135,7 @@ Health check endpoints after deploy:
 
 ## Nightly Cron
 
-- Endpoint: `POST /api/cron/nightly`
+- Endpoint: `GET /api/cron/nightly` (used by Vercel cron) and `POST /api/cron/nightly`
 - Auth: `Authorization: Bearer <CRON_SECRET>` or `x-cron-secret: <CRON_SECRET>`
 - Default behavior: runs pipeline for yesterday (UTC):
   1. RSS ingest
@@ -167,6 +169,9 @@ Deliverables:
 
 Current status:
 - Implemented in `apps/mobile` as an Expo TypeScript app.
+- Navigation included:
+  - bottom tabs (`Latest`, `Archive`, `Settings`)
+  - stack detail route for `/brief/YYYY-MM-DD` style viewing
 - Views included:
   - Latest published brief
   - Archive list of published briefs
@@ -199,6 +204,15 @@ Deliverables:
   - preferred time (`HH:mm`)
   - timezone (IANA string from device, e.g. `America/New_York`)
 - Persist preferences in Supabase.
+
+Current status:
+- Implemented in mobile `Settings` tab:
+  - email/password sign in
+  - account creation
+  - sign out
+  - notification preference editor and save flow
+- Requires running SQL migration:
+  - [supabase/week4_mobile_push.sql](./supabase/week4_mobile_push.sql)
 
 Suggested table:
 
