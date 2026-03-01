@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clusterArticlesForWindowDate } from "@/app/api/admin/cluster/route";
-import { generateDraftFromTopClusters } from "@/app/api/admin/generate-draft/route";
-import { ingestRssForWindowDate } from "@/app/api/admin/ingest-rss/route";
-import { rankClustersForWindowDate } from "@/app/api/admin/rank/route";
+import { clusterArticlesForWindowDate } from "@/lib/pipeline/cluster";
+import { generateDraftFromTopClusters, getYesterdayUtcDateInput } from "@/lib/pipeline/generate-draft";
+import { ingestRssForWindowDate } from "@/lib/pipeline/ingest-rss";
+import { rankClustersForWindowDate } from "@/lib/pipeline/rank";
 import { getSupabaseServiceRoleClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -13,17 +13,6 @@ const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 type NightlyRequestBody = {
   windowDate?: string;
 };
-
-function getYesterdayUtcDateInput(): string {
-  const now = new Date();
-  const yesterdayUtc = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
-  );
-  const year = yesterdayUtc.getUTCFullYear();
-  const month = String(yesterdayUtc.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(yesterdayUtc.getUTCDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function extractCronSecret(request: NextRequest): string | null {
   const headerSecret = request.headers.get("x-cron-secret")?.trim();
@@ -44,7 +33,7 @@ function extractCronSecret(request: NextRequest): string | null {
   return token.trim();
 }
 
-export async function POST(request: NextRequest) {
+async function runNightly(request: NextRequest, windowDateInput?: string) {
   const expectedSecret = process.env.CRON_SECRET?.trim();
   if (!expectedSecret) {
     return NextResponse.json(
@@ -57,9 +46,7 @@ export async function POST(request: NextRequest) {
   if (!providedSecret || providedSecret !== expectedSecret) {
     return NextResponse.json({ error: "Unauthorized cron request." }, { status: 401 });
   }
-
-  const body = (await request.json().catch(() => ({}))) as NightlyRequestBody;
-  const windowDate = body.windowDate?.trim() || getYesterdayUtcDateInput();
+  const windowDate = windowDateInput?.trim() || getYesterdayUtcDateInput();
 
   if (!DATE_PATTERN.test(windowDate)) {
     return NextResponse.json(
@@ -91,4 +78,14 @@ export async function POST(request: NextRequest) {
     console.error("[cron/nightly] Pipeline failed", { windowDate, error: message });
     return NextResponse.json({ error: message, windowDate }, { status: 500 });
   }
+}
+
+export async function GET(request: NextRequest) {
+  const windowDate = request.nextUrl.searchParams.get("windowDate")?.trim();
+  return runNightly(request, windowDate);
+}
+
+export async function POST(request: NextRequest) {
+  const body = (await request.json().catch(() => ({}))) as NightlyRequestBody;
+  return runNightly(request, body.windowDate);
 }

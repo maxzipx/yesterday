@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { clusterArticlesForWindowDate } from "@/app/api/admin/cluster/route";
-import { generateDraftFromTopClusters } from "@/app/api/admin/generate-draft/route";
-import { ingestRssForWindowDate } from "@/app/api/admin/ingest-rss/route";
-import { rankClustersForWindowDate } from "@/app/api/admin/rank/route";
 import { requireAdminFromRequest } from "@/lib/admin-auth";
 import { AdminAiDraftError, draftBriefWithAi } from "@/lib/admin-ai-draft";
 import { ollamaChat } from "@/lib/ollama";
+import { clusterArticlesForWindowDate } from "@/lib/pipeline/cluster";
+import { generateDraftFromTopClusters } from "@/lib/pipeline/generate-draft";
+import { ingestRssForWindowDate } from "@/lib/pipeline/ingest-rss";
+import { rankClustersForWindowDate } from "@/lib/pipeline/rank";
 import { checkRateLimit } from "@/lib/rate-limit";
 import { getSupabaseServerClientForToken } from "@/lib/supabase/server";
 
