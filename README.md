@@ -165,6 +165,29 @@ Deliverables:
   - Brief Detail (`YYYY-MM-DD`)
 - App reads only published data via existing RLS.
 
+Current status:
+- Implemented in `apps/mobile` as an Expo TypeScript app.
+- Views included:
+  - Latest published brief
+  - Archive list of published briefs
+  - Brief detail by selected date
+- Source links are tappable in story cards.
+
+Mobile env setup (`apps/mobile/.env.local`):
+
+```bash
+EXPO_PUBLIC_SUPABASE_URL=your_supabase_project_url
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
+
+Run mobile app:
+
+```bash
+cd apps/mobile
+npm install
+npm run start
+```
+
 ### Phase 2: Auth + Notification Preferences
 
 Goal: let users sign in and set their preferred notification time.
