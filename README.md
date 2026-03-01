@@ -9,6 +9,13 @@ Next.js App Router app for publishing and viewing daily briefs.
 - ESLint
 - Supabase (`@supabase/supabase-js`)
 
+## Product Direction (Admin Local + iPhone App Public)
+
+- Admin workflow stays on your local machine (including Ollama).
+- Public consumption happens in a React Native / Expo iPhone app.
+- Supabase is the shared backend between local admin publishing and the public mobile app.
+- Push notifications are sent to users at their chosen local time (for example 7:00 or 8:00), with the same daily brief message.
+
 ## Environment Variables
 
 Copy `.env.example` to `.env.local` and set:
@@ -142,6 +149,111 @@ curl -X POST "https://YOUR_DOMAIN/api/cron/nightly" \
 ```
 
 Vercel cron schedule is configured in [vercel.json](./vercel.json) to call `/api/cron/nightly` daily at `09:00 UTC`.
+
+## Expo Mobile App Roadmap (Phased)
+
+### Phase 1: Mobile Foundation
+
+Goal: create the Expo app and connect to Supabase for read-only published brief consumption.
+
+Deliverables:
+- New Expo app project (`apps/mobile` or separate repo).
+- Supabase client setup in Expo.
+- Screens:
+  - Latest Brief
+  - Archive (published dates)
+  - Brief Detail (`YYYY-MM-DD`)
+- App reads only published data via existing RLS.
+
+### Phase 2: Auth + Notification Preferences
+
+Goal: let users sign in and set their preferred notification time.
+
+Deliverables:
+- Email auth in app (Supabase Auth).
+- Settings screen:
+  - notifications on/off
+  - preferred time (`HH:mm`)
+  - timezone (IANA string from device, e.g. `America/New_York`)
+- Persist preferences in Supabase.
+
+Suggested table:
+
+```sql
+create table if not exists public.user_push_prefs (
+  user_id uuid primary key references auth.users(id) on delete cascade,
+  expo_push_token text,
+  notifications_enabled boolean not null default true,
+  notify_time_local time not null default '08:00',
+  timezone text not null default 'UTC',
+  last_sent_for_date date null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+```
+
+RLS direction:
+- User can `select/update` only their own row.
+- Service role / trusted function can read rows to send pushes.
+
+### Phase 3: Push Delivery Pipeline (Per-User Local Time)
+
+Goal: send the same brief notification to each user at their chosen local time.
+
+Deliverables:
+- Supabase Edge Function (scheduled every 5-15 minutes):
+  - loads latest published brief
+  - finds users whose local time matches their `notify_time_local`
+  - skips users already sent for that brief date (`last_sent_for_date`)
+  - sends via Expo Push API
+  - updates `last_sent_for_date`
+- Handles timezone and DST via stored IANA timezone.
+
+Why this approach:
+- Server-controlled timing and reliability.
+- Works even when app is closed.
+- Avoids per-device local scheduling drift.
+
+### Phase 4: Publish-to-Push Integration
+
+Goal: when you publish in admin, users still receive notification at their own scheduled time.
+
+Deliverables:
+- Keep publish action unchanged for content.
+- Optional: record a lightweight `published_briefs_events` row for observability.
+- Scheduler always targets the latest published brief for that date/window.
+
+### Phase 5: Quality, Safety, and Analytics
+
+Goal: production hardening.
+
+Deliverables:
+- Retry logic + dead-token cleanup (invalid Expo tokens).
+- Basic metrics:
+  - users matched
+  - sent
+  - failed
+  - skipped (already sent / disabled)
+- Audit logs for scheduled runs.
+- App UX polish (loading, caching, offline fallback for last brief).
+
+### Phase 6: App Store + Operations
+
+Goal: ship and operate.
+
+Deliverables:
+- EAS build profiles for iOS.
+- TestFlight rollout.
+- Release checklist for content pipeline + push pipeline.
+- On-call playbook for failed sends and token churn.
+
+## Recommended Execution Order
+
+1. Build Phase 1 and verify read-only mobile brief flow.
+2. Build Phase 2 and persist user preferences + push token.
+3. Build Phase 3 scheduler and validate timed delivery with test users in different timezones.
+4. Add Phase 4 integration and Phase 5 observability.
+5. Ship via Phase 6.
 
 ## Post-Deploy QA Checklist
 
