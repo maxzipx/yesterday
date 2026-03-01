@@ -1,0 +1,2 @@
+[functions.send-daily-brief]
+verify_jwt = false

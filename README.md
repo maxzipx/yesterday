@@ -251,6 +251,7 @@ Deliverables:
 Current status:
 - Implemented edge function:
   - [supabase/functions/send-daily-brief/index.ts](./supabase/functions/send-daily-brief/index.ts)
+  - [supabase/config.toml](./supabase/config.toml) (`[functions.send-daily-brief] verify_jwt = false`)
   - [supabase/functions/send-daily-brief/config.toml](./supabase/functions/send-daily-brief/config.toml) (`verify_jwt = false` for cron/header-auth access)
 - Function behavior:
   - validates `CRON_SECRET` (`x-cron-secret` or bearer token)
