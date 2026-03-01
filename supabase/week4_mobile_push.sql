@@ -12,6 +12,16 @@ create table if not exists public.user_push_prefs (
   updated_at timestamptz not null default now()
 );
 
+create or replace function public.set_updated_at_timestamp()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
 create index if not exists user_push_prefs_notify_time_idx
   on public.user_push_prefs (notifications_enabled, notify_time_local);
 
@@ -22,7 +32,7 @@ drop trigger if exists set_user_push_prefs_updated_at on public.user_push_prefs;
 create trigger set_user_push_prefs_updated_at
 before update on public.user_push_prefs
 for each row
-execute function public.set_updated_at();
+execute function public.set_updated_at_timestamp();
 
 alter table public.user_push_prefs enable row level security;
 
