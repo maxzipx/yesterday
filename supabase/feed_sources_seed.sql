@@ -11,7 +11,17 @@ values
   ('Nature - News', 'https://www.nature.com/nature.rss', true),
   ('Politico - Picks', 'https://www.politico.com/rss/politicopicks.xml', true),
   ('Al Jazeera - All News', 'https://www.aljazeera.com/xml/rss/all.xml', true),
-  ('CBS News - Latest', 'https://www.cbsnews.com/latest/rss/main', true)
+  ('CBS News - Latest', 'https://www.cbsnews.com/latest/rss/main', true),
+  ('Reuters - World News', 'https://feeds.reuters.com/Reuters/worldNews', true),
+  ('AP News - Top Headlines', 'https://apnews.com/rss', true),
+  ('The Hill - News', 'https://thehill.com/feed/', true),
+  ('Deutsche Welle (DW) - Top Stories', 'https://rss.dw.com/rdf/rss-en-top', true),
+  ('South China Morning Post - World', 'https://www.scmp.com/rss/91/feed', true),
+  ('The Economist - International', 'https://www.economist.com/international/rss.xml', true),
+  ('Yahoo Finance - News', 'https://finance.yahoo.com/news/rssindex', true),
+  ('Foreign Affairs - Latest', 'https://www.foreignaffairs.com/rss.xml', true),
+  ('Brookings Institution - Research', 'https://www.brookings.edu/feed/', true),
+  ('Inside Climate News', 'https://insideclimatenews.org/feed/', true)
 on conflict (url) do update
 set
   name = excluded.name,
