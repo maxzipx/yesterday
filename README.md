@@ -95,6 +95,7 @@ For Week 2 candidate pipeline schema (ingestion + clustering), run:
 - [supabase/week2_pipeline.sql](./supabase/week2_pipeline.sql)
 - [supabase/week3_ai.sql](./supabase/week3_ai.sql)
 - [supabase/week4_mobile_push.sql](./supabase/week4_mobile_push.sql)
+- [supabase/week4_push_hardening.sql](./supabase/week4_push_hardening.sql)
 
 Add feed source rows before running ingestion:
 
@@ -256,10 +257,12 @@ Current status:
 - Function behavior:
   - validates `CRON_SECRET` (`x-cron-secret` or bearer token)
   - loads latest published brief
-  - matches due users by local timezone + preferred minute
+  - matches due users by local timezone + preferred time with a 5-minute delivery window
   - sends via Expo Push API
   - updates `last_sent_for_date` to avoid duplicates
   - clears invalid tokens (`DeviceNotRegistered`)
+  - chunks sends in Expo-safe batches and retries transient failures
+  - writes run and attempt logs (`push_delivery_runs`, `push_delivery_attempts`)
 
 Deploy function (Supabase CLI):
 
